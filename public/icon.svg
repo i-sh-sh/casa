@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="קאסה">
+  <rect width="64" height="64" rx="14" fill="#b4623f"/>
+  <path d="M14 30.5 32 16l18 14.5V48a2.5 2.5 0 0 1-2.5 2.5h-31A2.5 2.5 0 0 1 14 48V30.5Z" fill="#f7f3ee"/>
+  <path d="M27 50.5V38.5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v12" fill="#b4623f"/>
+</svg>

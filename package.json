@@ -1,0 +1,35 @@
+{
+  "name": "casa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "מערכת ניהול בית — תקציב, מזווה, קניות, מטלות",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.app.json --noEmit",
+    "test": "node --test \"scripts/tests/*.test.ts\"",
+    "check": "npm run schema:check && npm run typecheck && npm test",
+    "schema:build": "node scripts/build-schema.ts",
+    "schema:check": "node scripts/build-schema.ts && git diff --quiet db/schema.ts || (echo 'db/schema.ts is stale — run npm run schema:build and commit' && exit 1)"
+  },
+  "dependencies": {
+    "google-auth-library": "^10.6.2",
+    "pg": "^8.13.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "web-push": "^3.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "@types/web-push": "^3.6.4",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vercel/node": "^5.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  }
+}

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # 22.18+ strips TypeScript types natively, which is what lets the
+          # tests import shared/*.ts with no build step and no test runner.
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: db/schema.ts matches db/schema.sql
+        run: |
+          node scripts/build-schema.ts
+          git diff --exit-code db/schema.ts \
+            || (echo '::error::db/schema.ts is stale — run `npm run schema:build` and commit it' && exit 1)
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

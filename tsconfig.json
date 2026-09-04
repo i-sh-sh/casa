@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    // Tests and scripts import '../../shared/money.ts' with the extension,
+    // because that is what Node's native type stripping resolves — it does no
+    // path remapping, so a '.js' specifier would point at a file that does not
+    // exist. Safe here only because this project never emits from tsc.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["api", "scripts", "shared"]
+}
