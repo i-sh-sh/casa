@@ -45,7 +45,19 @@ export function HomeScreen() {
   });
 
   const names = new Map((balance.data?.per_person ?? []).map((p) => [p.email, p.display_name]));
-  const quiet = !loading
+
+  // "Nothing to report" and "we could not find out" are different answers, and
+  // this screen used to give the first one for both: every `?? 0` reads a failed
+  // panel as an empty one, so a totally broken dashboard announced that the
+  // house was calm. A screen that reassures you when it is blind is worse than
+  // one that admits it is blind.
+  const failure = budget.error ?? shopping.error ?? expiring.error ?? bills.error ?? balance.error ?? low.error;
+  const reloadAll = () => {
+    budget.reload(); shopping.reload(); expiring.reload();
+    bills.reload(); balance.reload(); low.reload();
+  };
+
+  const quiet = !loading && !failure
     && (shopping.data?.length ?? 0) === 0
     && (expiring.data?.length ?? 0) === 0
     && soonBills.length === 0
@@ -57,7 +69,7 @@ export function HomeScreen() {
 
       <div className="page">
         {loading && <Spinner />}
-        {budget.error && <ErrorNote message={budget.error} onRetry={budget.reload} />}
+        {failure && <ErrorNote message={failure} onRetry={reloadAll} />}
 
         {budget.data && (
           <Link to="/budget" style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
