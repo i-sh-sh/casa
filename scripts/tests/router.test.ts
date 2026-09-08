@@ -54,6 +54,14 @@ test('an already-stripped URL falls back to req.query, then to itself', () => {
   assert.deepEqual(segmentsOf(req('/pantry/products/123/stock')), ['products', '123', 'stock']);
 });
 
+test('Vercel catch-all [...path] placeholder in URL is ignored in favor of query.path or search params', () => {
+  assert.deepEqual(segmentsOf({ url: '/api/pantry/[...path]?path=products&path=2&path=stock', query: { path: ['products', '2', 'stock'] } }), ['products', '2', 'stock']);
+  assert.deepEqual(segmentsOf({ url: '/api/pantry/[...path]?path=pantry&path=products&path=2&path=stock', query: { path: ['pantry', 'products', '2', 'stock'] } }), ['products', '2', 'stock']);
+  assert.deepEqual(segmentsOf({ url: '/api/pantry/[...path]?path=products&path=2&path=stock', query: {} }), ['products', '2', 'stock']);
+  assert.deepEqual(segmentsOf({ url: '/api/pantry/[...path]', query: { path: ['products', '2', 'stock'] } }), ['products', '2', 'stock']);
+});
+
+
 // ── Pattern matching ─────────────────────────────────────────────────────
 
 test('a literal pattern matches only itself', () => {

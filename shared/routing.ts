@@ -30,23 +30,48 @@ const MODULES = new Set(['admin', 'auth', 'cron', 'money', 'pantry', 'shopping']
 export function segmentsOf(req: RequestShape): string[] {
   let rawSegments: string[] = [];
 
-  const pathname = (req.url ?? '').split('?')[0] ?? '';
-  if (pathname && pathname !== '/') {
-    rawSegments = pathname.split('/').filter(Boolean).map(decodeSegment);
-  } else if (req.query?.['path']) {
-    const raw = req.query['path'];
-    if (Array.isArray(raw)) {
-      rawSegments = raw.filter(Boolean).map(decodeSegment);
-    } else if (typeof raw === 'string' && raw) {
-      rawSegments = raw.split('/').filter(Boolean).map(decodeSegment);
+  // 1. Try req.query.path if available
+  const queryPath = req.query?.['path'];
+  if (queryPath) {
+    if (Array.isArray(queryPath)) {
+      rawSegments = queryPath.filter(Boolean).map(decodeSegment);
+    } else if (typeof queryPath === 'string' && queryPath) {
+      rawSegments = queryPath.split('/').filter(Boolean).map(decodeSegment);
     }
   }
 
-  if (rawSegments[0] === 'api') {
-    rawSegments.shift();
+  // 2. If no segments from req.query.path, check req.url search params for ?path=
+  const url = req.url ?? '';
+  const searchIndex = url.indexOf('?');
+  const pathname = (searchIndex !== -1 ? url.slice(0, searchIndex) : url) || '';
+
+  if (rawSegments.length === 0 && searchIndex !== -1) {
+    const searchParams = new URLSearchParams(url.slice(searchIndex + 1));
+    const pathFromSearch = searchParams.getAll('path');
+    if (pathFromSearch.length > 0) {
+      rawSegments = pathFromSearch.filter(Boolean).map(decodeSegment);
+    }
   }
-  if (rawSegments[0] && MODULES.has(rawSegments[0])) {
-    rawSegments.shift();
+
+  // 3. If still no segments and pathname does NOT contain '[', parse pathname
+  if (rawSegments.length === 0 && pathname && pathname !== '/' && !pathname.includes('[')) {
+    rawSegments = pathname.split('/').filter(Boolean).map(decodeSegment);
+  }
+
+  // 4. Filter out any placeholder segments like [...path]
+  rawSegments = rawSegments.filter((seg) => !seg.startsWith('['));
+
+  // 5. Strip leading 'api' and/or module names iteratively
+  while (rawSegments.length > 0) {
+    if (rawSegments[0] === 'api') {
+      rawSegments.shift();
+      continue;
+    }
+    if (MODULES.has(rawSegments[0]!)) {
+      rawSegments.shift();
+      continue;
+    }
+    break;
   }
 
   return rawSegments;
