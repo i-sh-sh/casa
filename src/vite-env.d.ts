@@ -1,2 +1,3 @@
-/** Frozen into the bundle by vite.config.ts, read from package.json. */
+/// <reference types="vite/client" />
+
 declare const __APP_VERSION__: string;

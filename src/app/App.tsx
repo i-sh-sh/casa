@@ -10,7 +10,7 @@ import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
 import { api } from '../lib/api.js';
-import { useVersionCheck } from '../lib/version.js';
+import { useVersion } from '../lib/version.js';
 
 const TABS: { to: string; icon: IconName; label: string }[] = [
   { to: '/',         icon: 'home',   label: 'הבית' },
@@ -93,47 +93,25 @@ function SignIn() {
   );
 }
 
-/**
- * The one case a forced update needs a human for.
- *
- * A mandatory release reloads the tab silently — twice, if the first attempt
- * comes back still old. After that it stops: a half-finished deploy or a proxy
- * serving stale HTML would otherwise loop forever and make the phone unusable.
- * At that point the only honest thing is to say so and hand over the one
- * action that actually clears it.
- */
-function UpdateStuck({ latest, current }: { latest: string | null; current: string }) {
+function StuckDialog({ onReload }: { onReload: () => void }) {
   return (
-    <div className="sheet-backdrop" role="alertdialog" aria-modal="true">
-      <div className="sheet">
-        <h2>העדכון לא נתפס</h2>
-        <p style={{ marginBottom: 'var(--s4)' }}>
-          ניסינו לטעון מחדש פעמיים והדפדפן חזר עם הגרסה הישנה. זה קורה כשפריסה
-          עוד באוויר או כששרת ביניים מחזיק עותק ישן.
-        </p>
-        <div className="rows" style={{ marginBottom: 'var(--s5)' }}>
-          <div className="row" style={{ minHeight: 40 }}>
-            <span className="grow label">הגרסה כאן</span><span className="n">{current}</span>
-          </div>
-          <div className="row" style={{ minHeight: 40 }}>
-            <span className="grow label">הגרסה שפורסמה</span><span className="n">{latest ?? '—'}</span>
-          </div>
-        </div>
-        <button className="btn btn-primary btn-block" onClick={() => location.reload()}>
-          לנסות שוב
-        </button>
-        <p className="meta" style={{ marginTop: 'var(--s3)' }}>
-          אם זה חוזר — סגרו את הלשונית ופתחו מחדש, או המתינו דקה שהפריסה תסתיים.
-        </p>
-      </div>
+    <div className="gate">
+      <Icon name="alert" size={28} />
+      <div className="wordmark" style={{ fontSize: 'var(--t-sub)', marginTop: 'var(--s4)' }}>העדכון לא נתפס</div>
+      <p>
+        ניסינו לעדכן לגרסה החדשה אך הדפדפן ממשיך לטעון את הגרסה הישנה.
+        <br />
+        נסו ללחוץ על הכפתור למטה, או לסגור ולפתוח מחדש את האפליקציה.
+      </p>
+      <button className="btn btn-primary" onClick={onReload}>ניסיון נוסף</button>
     </div>
   );
 }
 
 function Shell() {
   const { user, loading, signOut } = useSession();
+  const { stuck, reload } = useVersion();
   const [openItems, setOpenItems] = useState(0);
-  const version = useVersionCheck();
 
   // The one number worth knowing without opening a screen: is there anything
   // to buy. It rides in the nav so the answer costs no navigation.
@@ -151,6 +129,7 @@ function Shell() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); };
   }, [user]);
 
+  if (stuck) return <StuckDialog onReload={reload} />;
   if (loading) return <div className="page" style={{ maxWidth: 640 }}><Loading /></div>;
   if (!user) return <SignIn />;
   if (user.role === 'pending') return <Pending email={user.email} onSignOut={() => void signOut()} />;
@@ -159,7 +138,6 @@ function Shell() {
     <div className="shell">
       <Screen />
       <Nav openItems={openItems} />
-      {version.stuck && <UpdateStuck latest={version.latest} current={version.current} />}
     </div>
   );
 }

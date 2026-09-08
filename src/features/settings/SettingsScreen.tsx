@@ -5,8 +5,8 @@ import { AsyncForm, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from 
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS } from '@shared/money.js';
-import { useVersionCheck } from '../../lib/version.js';
-import type { Account, User } from '@shared/types.js';
+import { useVersion } from '../../lib/version.js';
+import { shouldUpdate } from '@shared/version.js';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'בעל הבית', member: 'שותף', viewer: 'צופה', pending: 'ממתין לאישור',
@@ -63,10 +63,10 @@ export function SettingsScreen() {
 
         <ThemeSection />
 
+        <VersionSection />
+
         {isOwner && <MembersSection currentEmail={user.email} />}
         {isOwner && <DatabaseSection />}
-
-        <VersionSection />
 
         <section className="section">
           <h2>מדריך</h2>
@@ -162,39 +162,33 @@ function ThemeSection() {
   );
 }
 
-/**
- * Which build is running, and whether it is the current one.
- *
- * Worth a card of its own because "did my change actually ship" is the first
- * question after every deploy, and the honest answer needs two numbers rather
- * than a hopeful refresh.
- */
 function VersionSection() {
-  const version = useVersionCheck();
+  const { currentVersion, manifest, reload } = useVersion();
+  const serverVersion = manifest?.version;
+  const isOutdated = manifest && shouldUpdate(currentVersion, manifest) !== 'none';
+
   return (
     <section className="section">
       <h2>גרסה</h2>
       <div className="rows">
         <div className="row" style={{ minHeight: 44 }}>
-          <span className="grow label">מותקנת כאן</span>
-          <span className="n">{version.current}</span>
+          <span className="grow label">מותקנת</span>
+          <span className="n">{currentVersion}</span>
         </div>
         <div className="row" style={{ minHeight: 44 }}>
           <span className="grow label">פורסמה</span>
-          {version.latest
-            ? <span className={`n ${version.behind ? 'amount over' : ''}`}>{version.latest}</span>
-            : <span className="meta">לא נבדק</span>}
+          <span className="n">{serverVersion ?? '…'}</span>
         </div>
       </div>
-      {version.behind
-        ? <p className="meta" style={{ marginTop: 'var(--s2)', color: 'var(--red)' }}>
-            יש גרסה חדשה. הלשונית תתרענן לבד ברגע שלא תהיו באמצע משהו.
-          </p>
-        : <p className="meta" style={{ marginTop: 'var(--s2)' }}>עדכני.</p>}
-      {version.notes.length > 0 && (
-        <ul className="meta" style={{ marginTop: 'var(--s2)', paddingInlineStart: 'var(--s4)' }}>
-          {version.notes.slice(0, 5).map((note) => <li key={note}>{note}</li>)}
-        </ul>
+      {manifest?.notes && (
+        <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+          {manifest.notes}
+        </p>
+      )}
+      {isOutdated && (
+        <button className="btn btn-block btn-primary" style={{ marginTop: 'var(--s3)' }} onClick={reload}>
+          עדכון לגרסה {serverVersion}
+        </button>
       )}
     </section>
   );

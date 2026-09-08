@@ -25,11 +25,14 @@ export interface RequestShape {
  * directory the function is mounted under, keep the rest. Segments are decoded,
  * because `/api/admin/users/a%40b.com` has to arrive as an email address.
  */
+const MODULES = ['admin', 'auth', 'cron', 'money', 'pantry', 'shopping'];
+
 export function segmentsOf(req: RequestShape): string[] {
   const pathname = (req.url ?? '').split('?')[0] ?? '';
   const all = pathname.split('/').filter(Boolean).map(decodeSegment);
 
   if (all[0] === 'api') return all.slice(2);
+  if (all[0] && MODULES.includes(all[0])) return all.slice(1);
 
   // A runtime that hands us an already-stripped path, or none at all.
   const raw = req.query?.['path'];
