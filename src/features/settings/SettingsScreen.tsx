@@ -5,7 +5,8 @@ import { AsyncForm, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from 
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS } from '@shared/money.js';
-import type { Account, User } from '@shared/types.js';
+import { useVersion } from '../../lib/version.js';
+import { shouldUpdate } from '@shared/version.js';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'בעל הבית', member: 'שותף', viewer: 'צופה', pending: 'ממתין לאישור',
@@ -61,6 +62,8 @@ export function SettingsScreen() {
         </section>
 
         <ThemeSection />
+
+        <VersionSection />
 
         {isOwner && <MembersSection currentEmail={user.email} />}
         {isOwner && <DatabaseSection />}
@@ -155,6 +158,38 @@ function ThemeSection() {
         <button className="tab" aria-pressed={theme === 'light'} onClick={() => apply('light')}>בהיר</button>
         <button className="tab" aria-pressed={theme === 'dark'} onClick={() => apply('dark')}>כהה</button>
       </div>
+    </section>
+  );
+}
+
+function VersionSection() {
+  const { currentVersion, manifest, reload } = useVersion();
+  const serverVersion = manifest?.version;
+  const isOutdated = manifest && shouldUpdate(currentVersion, manifest) !== 'none';
+
+  return (
+    <section className="section">
+      <h2>גרסה</h2>
+      <div className="rows">
+        <div className="row" style={{ minHeight: 44 }}>
+          <span className="grow label">מותקנת</span>
+          <span className="n">{currentVersion}</span>
+        </div>
+        <div className="row" style={{ minHeight: 44 }}>
+          <span className="grow label">פורסמה</span>
+          <span className="n">{serverVersion ?? '…'}</span>
+        </div>
+      </div>
+      {manifest?.notes && (
+        <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+          {manifest.notes}
+        </p>
+      )}
+      {isOutdated && (
+        <button className="btn btn-block btn-primary" style={{ marginTop: 'var(--s3)' }} onClick={reload}>
+          עדכון לגרסה {serverVersion}
+        </button>
+      )}
     </section>
   );
 }

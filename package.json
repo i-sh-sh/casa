@@ -12,7 +12,8 @@
     "test": "node --test \"scripts/tests/*.test.ts\"",
     "check": "npm run schema:check && npm run typecheck && npm test",
     "schema:build": "node scripts/build-schema.ts",
-    "schema:check": "node scripts/build-schema.ts && git diff --quiet db/schema.ts || (echo 'db/schema.ts is stale — run npm run schema:build and commit' && exit 1)"
+    "schema:check": "node scripts/build-schema.ts && git diff --quiet db/schema.ts || (echo 'db/schema.ts is stale — run npm run schema:build and commit' && exit 1)",
+    "release": "node scripts/release.ts"
   },
   "dependencies": {
     "google-auth-library": "^10.6.2",

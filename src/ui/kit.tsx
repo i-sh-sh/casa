@@ -4,6 +4,19 @@ import {
 } from 'react';
 import { Icon } from './Icon.js';
 
+let busyCount = 0;
+
+export function markBusy(): () => void {
+  busyCount++;
+  return () => {
+    busyCount = Math.max(0, busyCount - 1);
+  };
+}
+
+export function isBusy(): boolean {
+  return busyCount > 0;
+}
+
 // ── Sheet ────────────────────────────────────────────────────────────────
 
 /**
@@ -17,12 +30,14 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   const panel = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const unmark = markBusy();
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     panel.current?.focus();
     return () => {
+      unmark();
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previous;
     };
@@ -180,6 +195,12 @@ export function AsyncForm({ onSubmit, submitLabel, children, disabled }: {
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!busy) return;
+    const unmark = markBusy();
+    return () => unmark();
+  }, [busy]);
 
   const handle = async (e: FormEvent) => {
     e.preventDefault();

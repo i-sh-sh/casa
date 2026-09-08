@@ -47,13 +47,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
   if (!res.ok) {
     const message = (payload as { error?: string } | null)?.error;
-    throw new ApiError(res.status, message ?? `שגיאה ${res.status}`);
+    if (message) {
+      throw new ApiError(res.status, message);
+    }
+    if (res.status === 404) {
+      throw new ApiError(404, 'הנתיב המבוקש בשרת לא נמצא');
+    }
+    throw new ApiError(res.status, `שגיאת שרת (${res.status})`);
   }
   return payload as T;
 }
 
 function safeParse(text: string): unknown {
-  try { return JSON.parse(text); } catch { return { error: text.slice(0, 200) }; }
+  try { return JSON.parse(text); } catch { return null; }
 }
 
 function withQuery(path: string, params?: Record<string, string | number | undefined>): string {

@@ -49,6 +49,7 @@ test('the module root has no segments, and is a 404 rather than a match', () => 
 test('an already-stripped URL falls back to req.query, then to itself', () => {
   assert.deepEqual(segmentsOf({ url: '/budget', query: { path: ['budget'] } }), ['budget']);
   assert.deepEqual(segmentsOf({ url: '/bills/3/pay', query: {} }), ['bills', '3', 'pay']);
+  assert.deepEqual(segmentsOf(req('/pantry/products/123/stock')), ['products', '123', 'stock']);
 });
 
 // ── Pattern matching ─────────────────────────────────────────────────────

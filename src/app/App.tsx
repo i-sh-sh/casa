@@ -10,6 +10,7 @@ import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
 import { api } from '../lib/api.js';
+import { useVersion } from '../lib/version.js';
 
 const TABS: { to: string; icon: IconName; label: string }[] = [
   { to: '/',         icon: 'home',   label: 'הבית' },
@@ -92,8 +93,24 @@ function SignIn() {
   );
 }
 
+function StuckDialog({ onReload }: { onReload: () => void }) {
+  return (
+    <div className="gate">
+      <Icon name="alert" size={28} />
+      <div className="wordmark" style={{ fontSize: 'var(--t-sub)', marginTop: 'var(--s4)' }}>העדכון לא נתפס</div>
+      <p>
+        ניסינו לעדכן לגרסה החדשה אך הדפדפן ממשיך לטעון את הגרסה הישנה.
+        <br />
+        נסו ללחוץ על הכפתור למטה, או לסגור ולפתוח מחדש את האפליקציה.
+      </p>
+      <button className="btn btn-primary" onClick={onReload}>ניסיון נוסף</button>
+    </div>
+  );
+}
+
 function Shell() {
   const { user, loading, signOut } = useSession();
+  const { stuck, reload } = useVersion();
   const [openItems, setOpenItems] = useState(0);
 
   // The one number worth knowing without opening a screen: is there anything
@@ -112,6 +129,7 @@ function Shell() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); };
   }, [user]);
 
+  if (stuck) return <StuckDialog onReload={reload} />;
   if (loading) return <div className="page" style={{ maxWidth: 640 }}><Loading /></div>;
   if (!user) return <SignIn />;
   if (user.role === 'pending') return <Pending email={user.email} onSignOut={() => void signOut()} />;
