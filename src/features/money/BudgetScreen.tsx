@@ -1,28 +1,32 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { Link } from '../../lib/router.js';
-import { AsyncForm, Empty, ErrorNote, Field, Sheet, Spinner, useAsync, useToast } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
+import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS, monthKey, nextMonth, previousMonth } from '@shared/money.js';
 import type { BudgetMonth, EnvelopeRow } from '@shared/types.js';
 
-const MONTH_NAMES = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
 function monthLabel(month: string): string {
   const [year, m] = month.split('-').map(Number) as [number, number];
-  const now = new Date();
-  const isThisYear = year === now.getFullYear();
-  return isThisYear ? (MONTH_NAMES[m - 1] ?? month) : `${MONTH_NAMES[m - 1] ?? ''} ${year}`;
+  const name = MONTHS[m - 1] ?? month;
+  return year === new Date().getFullYear() ? name : `${name} ${year}`;
 }
 
 /**
  * The envelopes.
  *
- * The number the screen is built around is `available`, not `allocated` and not
- * `spent`. A bank app can already tell you what you spent; only this can tell
- * you what you may still spend on this particular thing — which is the number
- * that changes a decision at the till, and therefore the biggest thing on
- * every row.
+ * The screen is built around `available` — not what was allocated, not what
+ * was spent. A bank app already tells you what you spent; only this can tell
+ * you what you may still spend on *this particular thing*, which is the
+ * number that changes a decision at the till.
+ *
+ * There is no green anywhere. An envelope in credit is set in plain ink,
+ * because that is what "in the black" means and it is a real accounting
+ * convention rather than a UI palette. The red pencil is reserved for the one
+ * state that needs acting on, and because it is reserved, it carries.
  */
 export function BudgetScreen() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
@@ -42,69 +46,76 @@ export function BudgetScreen() {
       toast.show(res.filled ? `מולאו ${res.filled} קטגוריות` : 'הכול כבר מלא');
       budget.reload();
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : 'לא הצלחנו למלא', 'bad');
+      toast.show(err instanceof Error ? err.message : 'לא הצלחנו למלא', { tone: 'bad' });
     }
   }
+
+  const over = (data?.to_be_budgeted ?? 0) < 0;
 
   return (
     <>
       <TopBar
         title="תקציב"
         subtitle={monthLabel(month)}
-        action={<Link to="/transactions" className="btn btn-sm btn-ghost">תנועות</Link>}
+        action={<Link to="/transactions" className="btn btn-sm">תנועות</Link>}
       />
 
       <div className="page">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-          {/* RTL: "previous" sits on the right, where the thumb expects the
-              direction of travel to go back. */}
-          <button className="btn btn-sm btn-ghost" onClick={() => setMonth(previousMonth(month))} aria-label="חודש קודם">›</button>
-          <div style={{ flex: 1, textAlign: 'center', fontWeight: 500 }}>{monthLabel(month)}</div>
-          <button className="btn btn-sm btn-ghost" onClick={() => setMonth(nextMonth(month))} aria-label="חודש הבא">‹</button>
+        {/* RTL: travelling back in time is rightward, so the older month sits
+            on the right and its chevron points that way. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s2)' }}>
+          <button className="btn btn-quiet" onClick={() => setMonth(nextMonth(month))} aria-label="החודש הבא">
+            <Icon name="back" size={18} />
+          </button>
+          <div style={{ flex: 1, textAlign: 'center' }} className="label">{monthLabel(month)}</div>
+          <button className="btn btn-quiet" onClick={() => setMonth(previousMonth(month))} aria-label="החודש הקודם" style={{ transform: 'scaleX(-1)' }}>
+            <Icon name="back" size={18} />
+          </button>
         </div>
 
-        {budget.loading && !data && <Spinner />}
+        {budget.loading && !data && <Loading />}
         {budget.error && <ErrorNote message={budget.error} onRetry={budget.reload} />}
 
         {data && (
           <>
-            <ToBeBudgeted amount={data.to_be_budgeted} />
-
-            <div className="card card-pad" style={{ marginTop: 12 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14 }}>
-                <span className="muted">הוקצה החודש</span>
-                <span className="num">{formatILS(data.allocated)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginTop: 6 }}>
-                <span className="muted">הוצא החודש</span>
-                <span className="num">{formatILS(data.spent)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginTop: 6 }}>
-                <span className="muted">נכנס החודש</span>
-                <span className="num pos">{formatILS(data.income)}</span>
-              </div>
-              <button className="btn btn-sm btn-ghost btn-block" style={{ marginTop: 14 }} onClick={() => void autofill()}>
-                מילוי החודש לפי היעדים
-              </button>
+            {/* The one typographic event on this screen. */}
+            <div className="hero">
+              <div className="label">{over ? 'הקצינו יותר ממה שנכנס' : 'ממתין לייעוד'}</div>
+              <div className={`figure ${over ? 'over' : ''}`}>{formatILS(data.to_be_budgeted)}</div>
             </div>
+
+            <div className="rows" style={{ marginTop: 'var(--s4)' }}>
+              <Line label="נכנס החודש" value={data.income} />
+              <Line label="הוקצה" value={data.allocated} />
+              <Line label="הוצא" value={data.spent} />
+            </div>
+
+            <button className="btn btn-block" style={{ marginTop: 'var(--s4)' }} onClick={() => void autofill()}>
+              מילוי החודש לפי היעדים
+            </button>
 
             {data.envelopes.length === 0 && (
               <Empty
-                glyph="💰"
-                title="אין עדיין קטגוריות"
-                hint="הריצו זריעת ברירת מחדל מ«הגדרות» כדי לקבל תקציב ישראלי מוכן."
+                headline="אין עדיין קטגוריות"
+                hint="אפשר לזרוע תקציב ישראלי מוכן מתוך «הגדרות» ← «מסד הנתונים», ולשנות ממנו הכול."
               />
             )}
 
             {Object.entries(groups).map(([groupName, envelopes]) => (
               <section className="section" key={groupName}>
-                <h2>{groupName}</h2>
-                <div className="card">
-                  <div className="rows">
-                    {envelopes.map((env) => (
-                      <EnvelopeRowView key={env.category_id} env={env} onEdit={() => setEditing(env)} />
-                    ))}
-                  </div>
+                <h2>{groupName} <span className="count">· נשאר ₪</span></h2>
+                <div className="rows">
+                  {envelopes.map((env) => (
+                    <EnvelopeLine key={env.category_id} env={env} onEdit={() => setEditing(env)} />
+                  ))}
+                </div>
+                <hr className="rule-2" />
+                <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
+                  <span className="margin-col" />
+                  <span className="grow label">סך הקבוצה</span>
+                  <span className="n amount" style={{ fontWeight: 600 }}>
+                    {formatILS(envelopes.reduce((s, e) => s + e.available, 0), { symbol: false })}
+                  </span>
                 </div>
               </section>
             ))}
@@ -124,72 +135,63 @@ export function BudgetScreen() {
   );
 }
 
-/**
- * The single most important number, and the only one rendered big.
- *
- * Positive means there is money with no job yet. Negative means we have
- * promised more than came in — which is worth shouting about, because it is
- * the failure mode the envelope model exists to make visible.
- */
-function ToBeBudgeted({ amount }: { amount: number }) {
-  const over = amount < 0;
+function Line({ label, value }: { label: string; value: number }) {
   return (
-    <div
-      className="card card-pad"
-      style={{
-        textAlign: 'center',
-        background: over ? 'var(--bad-soft)' : 'var(--sage-soft)',
-        borderColor: over ? 'var(--bad)' : 'var(--sage)',
-      }}
-    >
-      <div style={{ fontSize: 13, color: over ? 'var(--bad)' : 'var(--sage)', fontWeight: 500 }}>
-        {over ? 'הקצינו יותר ממה שנכנס' : 'ממתין לייעוד'}
-      </div>
-      <div className="num" style={{ fontSize: 34, fontWeight: 700, color: over ? 'var(--bad)' : 'var(--sage)', letterSpacing: '-.02em' }}>
-        {formatILS(amount)}
-      </div>
+    <div className="row" style={{ minHeight: 40 }}>
+      <span className="grow label">{label}</span>
+      <span className="n amount">{formatILS(value)}</span>
     </div>
   );
 }
 
-function EnvelopeRowView({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void }) {
-  const spentRatio = env.allocated > 0 ? Math.min(env.spent / env.allocated, 1) : env.spent > 0 ? 1 : 0;
-  const tone = env.available < 0 ? 'bad' : spentRatio > 0.85 ? 'warn' : '';
+/**
+ * One envelope.
+ *
+ * Inverted pairing, on purpose: the label is the small heavy tracked thing and
+ * the value is the large light one. And `available` is the only figure given
+ * the money column — spent and allocated are context, set small underneath,
+ * so the eye never has to choose between three numbers on one line.
+ */
+function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void }) {
+  const over = env.available < 0;
+  const ratio = env.allocated > 0 ? Math.min(env.spent / env.allocated, 1) : env.spent > 0 ? 1 : 0;
 
   return (
     <button className="row" onClick={onEdit}>
-      <span aria-hidden="true" style={{ fontSize: 20, width: 26, textAlign: 'center' }}>{env.icon ?? '•'}</span>
-      <div className="grow">
-        <div className="title">{env.category_name}</div>
-        <div className={`bar ${tone}`} style={{ marginTop: 6, marginBottom: 5 }}>
-          <i style={{ width: `${spentRatio * 100}%` }} />
-        </div>
-        <div className="meta">
-          הוצא <span className="num">{formatILS(env.spent)}</span> מתוך <span className="num">{formatILS(env.allocated)}</span>
-        </div>
-      </div>
-      <div style={{ textAlign: 'end' }}>
-        <div className="num" style={{ fontWeight: 700, color: env.available < 0 ? 'var(--bad)' : 'var(--ink)' }}>
-          {formatILS(env.available)}
-        </div>
-        <div className="meta">נשאר</div>
-      </div>
+      <span className="grow">
+        <span className="title" style={{ display: 'block' }}>{env.category_name}</span>
+        <span className="meter" style={{ maxWidth: 180 }} aria-hidden="true">
+          <i style={{ width: `${ratio * 100}%`, background: over ? 'var(--red)' : undefined }} />
+        </span>
+        <span className="meta">
+          הוצא <span className="n">{formatILS(env.spent, { symbol: false })}</span>
+          {' מתוך '}
+          <span className="n">{formatILS(env.allocated, { symbol: false })}</span>
+          {over && <> · <span className="mark mark-red">חריגה</span></>}
+        </span>
+      </span>
+      <span className={`n amount ${over ? 'over' : ''}`} style={{ fontSize: 20 }}>
+        {formatILS(env.available, { symbol: false })}
+      </span>
     </button>
   );
 }
 
 function AllocateSheet({ env, month, onClose, onSaved }: { env: EnvelopeRow; month: string; onClose: () => void; onSaved: () => void }) {
   const [allocated, setAllocated] = useState(String(env.allocated));
+  const over = env.available < 0;
 
   return (
     <Sheet title={env.category_name} onClose={onClose}>
-      <div className="card card-pad" style={{ marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span className="muted">הוצא החודש</span><span className="num">{formatILS(env.spent)}</span>
+      <div className="rows" style={{ marginBottom: 'var(--s5)' }}>
+        <div className="row" style={{ minHeight: 40 }}>
+          <span className="grow label">הוצא החודש</span>
+          <span className="n amount">{formatILS(env.spent)}</span>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-          <span className="muted">זמין (כולל גלגול מחודשים קודמים)</span>
-          <span className="num" style={{ fontWeight: 700, color: env.available < 0 ? 'var(--bad)' : 'var(--ink)' }}>
+        <hr className="rule-2" />
+        <div className="row" style={{ minHeight: 48, borderBottom: 0 }}>
+          <span className="grow label">זמין · כולל גלגול מחודשים קודמים</span>
+          <span className={`n amount ${over ? 'over' : ''}`} style={{ fontSize: 24, fontWeight: 600 }}>
             {formatILS(env.available)}
           </span>
         </div>
@@ -202,17 +204,17 @@ function AllocateSheet({ env, month, onClose, onSaved }: { env: EnvelopeRow; mon
           onSaved();
         }}
       >
-        <Field label="כמה להקצות החודש">
+        <Field label="להקצות החודש · ₪">
           <input className="input" type="number" inputMode="decimal" step="10" value={allocated} onChange={(e) => setAllocated(e.target.value)} autoFocus />
         </Field>
         {env.monthly_target != null && (
           <button
             type="button"
-            className="btn btn-sm btn-ghost"
-            style={{ marginBottom: 14 }}
+            className="btn btn-sm"
+            style={{ marginBottom: 'var(--s4)' }}
             onClick={() => setAllocated(String(env.monthly_target))}
           >
-            היעד הרגיל: {formatILS(env.monthly_target)}
+            היעד הרגיל · {formatILS(env.monthly_target)}
           </button>
         )}
       </AsyncForm>

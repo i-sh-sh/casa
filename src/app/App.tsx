@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, RouterProvider, useRouter } from '../lib/router.js';
 import { GoogleSignInButton, SessionProvider, useSession } from '../lib/session.js';
-import { ToastProvider, Spinner } from '../ui/kit.js';
+import { ToastProvider, Loading } from '../ui/kit.js';
+import { Icon, type IconName } from '../ui/Icon.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { BudgetScreen } from '../features/money/BudgetScreen.js';
 import { TransactionsScreen } from '../features/money/TransactionsScreen.js';
@@ -10,23 +11,25 @@ import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
 import { api } from '../lib/api.js';
 
-const TABS = [
-  { to: '/',          glyph: '🏠', label: 'הבית' },
-  { to: '/shopping',  glyph: '🛒', label: 'קניות' },
-  { to: '/pantry',    glyph: '🥫', label: 'מזווה' },
-  { to: '/budget',    glyph: '💰', label: 'תקציב' },
-  { to: '/settings',  glyph: '⚙️', label: 'הגדרות' },
-] as const;
+const TABS: { to: string; icon: IconName; label: string }[] = [
+  { to: '/',         icon: 'home',   label: 'הבית' },
+  { to: '/shopping', icon: 'cart',   label: 'קניות' },
+  { to: '/pantry',   icon: 'pantry', label: 'מזווה' },
+  { to: '/budget',   icon: 'ledger', label: 'תקציב' },
+  { to: '/settings', icon: 'dials',  label: 'הגדרות' },
+];
 
 function Nav({ openItems }: { openItems: number }) {
   return (
     <nav className="nav" aria-label="ניווט ראשי">
       {TABS.map((tab) => (
         <Link key={tab.to} to={tab.to}>
-          <span className="glyph" aria-hidden="true">{tab.glyph}</span>
+          <Icon name={tab.icon} size={20} />
           <span>{tab.label}</span>
+          {/* A tally in the margin, not a filled badge. It counts, so it is set
+              in the numeral face like every other number in the app. */}
           {tab.to === '/shopping' && openItems > 0 && (
-            <span className="badge" aria-label={`${openItems} פריטים ברשימה`}>{openItems}</span>
+            <span className="tally" aria-label={`${openItems} פריטים ברשימה`}>{openItems}</span>
           )}
         </Link>
       ))}
@@ -45,9 +48,9 @@ function Screen() {
   return (
     <div className="page">
       <div className="empty">
-        <span className="glyph">🤷</span>
-        <p>אין כאן מסך כזה.</p>
-        <Link to="/" className="btn btn-ghost">חזרה הביתה</Link>
+        <div className="headline">אין כאן דף כזה</div>
+        <p>הכתובת שהגעתם אליה לא קיימת באפליקציה.</p>
+        <Link to="/" className="btn">חזרה לעמוד הראשי</Link>
       </div>
     </div>
   );
@@ -56,18 +59,15 @@ function Screen() {
 /** The waiting room: a real person who signed in but is not in the household yet. */
 function Pending({ email, onSignOut }: { email: string; onSignOut: () => void }) {
   return (
-    <div className="center-screen">
-      <div style={{ maxWidth: 380 }}>
-        <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
-        <h1 style={{ fontSize: 22, marginBottom: 10 }}>ממתינים לאישור</h1>
-        <p className="muted" style={{ marginBottom: 6 }}>
-          נכנסתם בתור <strong dir="ltr">{email}</strong>.
-        </p>
-        <p className="muted" style={{ marginBottom: 20 }}>
-          בעל הבית צריך לאשר את החשבון לפני שתראו משהו. בקשו ממנו לפתוח «הגדרות ← משתמשים».
-        </p>
-        <button className="btn btn-ghost" onClick={onSignOut}>יציאה</button>
-      </div>
+    <div className="gate">
+      <Icon name="lock" size={28} />
+      <div className="wordmark" style={{ fontSize: 'var(--t-sub)', marginTop: 'var(--s4)' }}>ממתינים לאישור</div>
+      <p>
+        נכנסתם בתור <span className="n" style={{ fontSize: '.95em' }}>{email}</span>.
+        <br />
+        בעל הבית צריך לאשר את החשבון. בקשו ממנו לפתוח «הגדרות» ← «מי בבית».
+      </p>
+      <button className="btn" onClick={onSignOut}>יציאה</button>
     </div>
   );
 }
@@ -75,21 +75,19 @@ function Pending({ email, onSignOut }: { email: string; onSignOut: () => void })
 function SignIn() {
   const { googleClientId, refresh } = useSession();
   return (
-    <div className="center-screen">
-      <div style={{ maxWidth: 340 }}>
-        <div style={{ fontSize: 52, marginBottom: 8 }}>🏠</div>
-        <h1 style={{ fontSize: 26, marginBottom: 6 }}>קאסה</h1>
-        <p className="muted" style={{ marginBottom: 28 }}>
-          התקציב, המזווה ורשימת הקניות — במקום אחד, לשנינו.
-        </p>
-        {googleClientId
-          ? <GoogleSignInButton clientId={googleClientId} onSignedIn={() => { void refresh(); }} />
-          : (
-            <p style={{ color: 'var(--bad)', fontSize: 14 }}>
-              חסר <code>GOOGLE_CLIENT_ID</code> בהגדרות השרת — בלעדיו אי אפשר להיכנס.
-            </p>
-          )}
-      </div>
+    <div className="gate">
+      <div className="wordmark">קאסה</div>
+      <p>
+        התקציב, המזווה ורשימת הקניות. פנקס אחד, לשנינו.
+      </p>
+      <hr className="rule" style={{ margin: '0 0 var(--s5)' }} />
+      {googleClientId
+        ? <GoogleSignInButton clientId={googleClientId} onSignedIn={() => { void refresh(); }} />
+        : (
+          <p style={{ color: 'var(--red)' }}>
+            חסר <span className="n">GOOGLE_CLIENT_ID</span> בהגדרות השרת — בלעדיו אי אפשר להיכנס.
+          </p>
+        )}
     </div>
   );
 }
@@ -98,8 +96,8 @@ function Shell() {
   const { user, loading, signOut } = useSession();
   const [openItems, setOpenItems] = useState(0);
 
-  // The shopping badge is the one number worth knowing without opening a
-  // screen — "יש משהו לקנות" is the question the app answers most often.
+  // The one number worth knowing without opening a screen: is there anything
+  // to buy. It rides in the nav so the answer costs no navigation.
   useEffect(() => {
     if (!user || user.role === 'pending') return;
     let cancelled = false;
@@ -114,7 +112,7 @@ function Shell() {
     return () => { cancelled = true; window.removeEventListener('focus', onFocus); };
   }, [user]);
 
-  if (loading) return <div className="center-screen"><Spinner /></div>;
+  if (loading) return <div className="page" style={{ maxWidth: 640 }}><Loading /></div>;
   if (!user) return <SignIn />;
   if (user.role === 'pending') return <Pending email={user.email} onSignOut={() => void signOut()} />;
 

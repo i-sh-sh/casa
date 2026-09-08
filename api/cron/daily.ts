@@ -49,19 +49,20 @@ export default handler(async (req, res) => {
 
   const lines: string[] = [];
 
+  // No emoji, here as anywhere else: the digest is read beside the app and
+  // should sound like it. Bold labels and an em dash carry the structure.
   if (added.length > 0) {
-    const names = added.map((p) => p.name).join(', ');
-    lines.push(`🛒 <b>נגמר ונוסף לרשימה:</b> ${names}`);
+    lines.push(`<b>נגמר ונוסף לרשימה</b> — ${added.map((p) => p.name).join(', ')}`);
   }
   if (expiring.length > 0) {
     const items = expiring
       .map((e) => `${e.product_name} (${e.days_left === 0 ? 'היום' : `עוד ${e.days_left} ימים`})`)
       .join(', ');
-    lines.push(`⏳ <b>עומד להיגמר התוקף:</b> ${items}`);
+    lines.push(`<b>להשתמש לפני שיתקלקל</b> — ${items}`);
   }
   for (const bill of dueBills) {
     const when = bill.days_left <= 0 ? 'היום' : `בעוד ${bill.days_left} ימים`;
-    lines.push(`💳 <b>${bill.name}</b> — ${when}${bill.amount_estimate ? `, כ-₪${bill.amount_estimate}` : ''}`);
+    lines.push(`<b>${bill.name}</b> — ${when}${bill.amount_estimate ? `, כ-₪${bill.amount_estimate}` : ''}`);
   }
 
   if (lines.length === 0) {
@@ -78,11 +79,11 @@ export default handler(async (req, res) => {
     return;
   }
 
-  const text = ['<b>הבית מדווח 🏠</b>', '', ...lines].join('\n');
+  const text = ['<b>קאסה · הבוקר בבית</b>', '', ...lines].join('\n');
   const [sentTelegram, sentPush] = await Promise.all([
     telegram(text),
     push({
-      title: 'הבית מדווח',
+      title: 'קאסה',
       body: lines.map((l) => l.replace(/<[^>]+>/g, '')).join(' · '),
       url: '/shopping',
     }),

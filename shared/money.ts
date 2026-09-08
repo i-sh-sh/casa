@@ -238,15 +238,37 @@ export function computeBalance(params: {
   return { amount, from_email: debtor.email, to_email: creditor.email, per_person };
 }
 
-/** ₪1,234.50 — the one place amounts become text. */
-export function formatILS(amount: number, opts: { sign?: boolean } = {}): string {
-  const formatted = new Intl.NumberFormat('he-IL', {
-    style: 'currency',
-    currency: 'ILS',
-    minimumFractionDigits: Number.isInteger(amount) ? 0 : 2,
-    maximumFractionDigits: 2,
+/**
+ * The one place an amount becomes text.
+ *
+ * Three decisions worth stating, because they are all deliberate:
+ *
+ * **Agorot are off by default.** They are noise in every overview — trailing
+ * decimals steal the eye from the digits that matter, and a column of
+ * `₪1,240.00` scans worse than `₪1,240`. Pass `agorot: true` on a single
+ * transaction, where the exact figure is the point.
+ *
+ * **The symbol is optional.** In a ledger column ₪ belongs once, in the
+ * column head, not forty times down the page. Pass `symbol: false` there.
+ *
+ * **The minus is U+2212, not a hyphen.** A hyphen is a punctuation mark drawn
+ * to sit between letters; the true minus is drawn to the width and height of
+ * the digits, which is what keeps a column of negatives aligned.
+ */
+export function formatILS(
+  amount: number,
+  opts: { sign?: boolean; agorot?: boolean; symbol?: boolean } = {},
+): string {
+  const { sign = false, agorot = false, symbol = true } = opts;
+  const fraction = agorot && !Number.isInteger(amount) ? 2 : 0;
+  const digits = new Intl.NumberFormat('he-IL', {
+    minimumFractionDigits: fraction,
+    maximumFractionDigits: fraction,
+    useGrouping: true,
   }).format(Math.abs(amount));
-  if (opts.sign && amount > 0) return `+${formatted}`;
-  if (amount < 0) return `−${formatted}`;
-  return formatted;
+
+  const body = symbol ? `₪${digits}` : digits;
+  if (amount < 0) return `−${body}`;
+  if (sign && amount > 0) return `+${body}`;
+  return body;
 }

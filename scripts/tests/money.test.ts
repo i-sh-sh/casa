@@ -238,8 +238,21 @@ test('income is not a shared cost', () => {
 // ── Presentation ─────────────────────────────────────────────────────────
 
 test('amounts read as shekels, with a real minus sign', () => {
-  assert.match(formatILS(1234), /1,234/);
+  assert.equal(formatILS(1234), '₪1,234');
+  assert.equal(formatILS(-50), '−₪50');
   assert.match(formatILS(-50), /^−/, 'U+2212, not a hyphen — it aligns with digits');
-  assert.match(formatILS(12.5), /12\.50/);
-  assert.match(formatILS(80, { sign: true }), /^\+/);
+  assert.equal(formatILS(80, { sign: true }), '+₪80');
+});
+
+test('agorot are suppressed unless the exact figure is the point', () => {
+  // A column of ₪1,240.00 scans worse than a column of ₪1,240, and the
+  // trailing zeros carry no information. Detail views opt back in.
+  assert.equal(formatILS(12.5), '₪13', 'rounded in an overview');
+  assert.equal(formatILS(12.5, { agorot: true }), '₪12.50', 'exact on a transaction');
+  assert.equal(formatILS(12, { agorot: true }), '₪12', 'a whole amount never grows .00');
+});
+
+test('the symbol can be dropped, because a column head carries it once', () => {
+  assert.equal(formatILS(1234, { symbol: false }), '1,234');
+  assert.equal(formatILS(-1234, { symbol: false }), '−1,234');
 });

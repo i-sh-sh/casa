@@ -1,150 +1,170 @@
-/* ─────────────────────────────────────────────────────────────────────────
-   Tokens
-   ─────────────────────────────────────────────────────────────────────────
-   A house, not a spreadsheet. The palette is warm clay and paper rather than
-   the blue-grey every finance app defaults to — this is opened on a Friday
-   morning at the kitchen table, and it should not feel like work.
+/* ═══════════════════════════════════════════════════════════════════════
+   קאסה — פנקס הקפה
+   The principles live in docs/DESIGN.md. This file only implements them.
 
-   Dark mode is defined by redefining tokens only. No component below ever
-   names a colour directly, which is the only way a theme stays consistent
-   once there are thirty screens. */
+   Three rules that every declaration below answers to:
+     1. No border-radius. No box-shadow. No cards. Anywhere.
+     2. Hierarchy comes from rules, weight jumps and reserved margins.
+     3. Green does not exist. Black is in-credit; red pencil is the exception.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── Tokens ──────────────────────────────────────────────────────────── */
 
 :root {
   color-scheme: light;
 
-  --paper:        #f7f3ee;
-  --surface:      #fffdfa;
-  --surface-2:    #f1ebe3;
-  --line:         #e2d9cd;
-  --line-strong:  #cdbfae;
+  /* Uncoated paper and iron-gall ink. Not #FFFFFF, not #F8FAFC. */
+  --paper:      #f2ede3;
+  --paper-2:    #eae3d6;   /* a second sheet: sunk rows, inputs */
+  --ink:        #1a1a17;
+  --ink-2:      #55503f;   /* labels — 6.4:1 on paper, still readable */
+  --ink-3:      #837c68;   /* marginalia only, never a number */
 
-  --ink:          #2a231c;
-  --ink-2:        #6b5f52;
-  --ink-3:        #9a8d7e;
+  /* Ledger ruling: faded blue-grey, printed before anything was written. */
+  --rule:       #cdc6b6;
+  --rule-blue:  #a9b4bd;
 
-  --clay:         #b4623f;
-  --clay-soft:    #f4e3da;
-  --sage:         #4f7a5f;
-  --sage-soft:    #e2ede5;
-  --amber:        #b4863f;
-  --amber-soft:   #f6ecd9;
-  --rose:         #a8443f;
-  --rose-soft:    #f7e2e0;
+  /* The grocer's red pencil. Over-budget, expired, destructive. Nothing else. */
+  --red:        #a8321e;
+  --red-wash:   #e9ddd2;
 
-  --ok:      var(--sage);
-  --ok-soft: var(--sage-soft);
-  --warn:      var(--amber);
-  --warn-soft: var(--amber-soft);
-  --bad:      var(--rose);
-  --bad-soft: var(--rose-soft);
+  /* The blue pencil: the system's own marginal note. */
+  --blue:       #3a5c7a;
+  --blue-wash:  #e2e4e2;
 
-  --r-sm: 8px;
-  --r:    14px;
-  --r-lg: 20px;
-  --r-full: 999px;
+  --f-display: 'Frank Ruhl Libre', 'Times New Roman', serif;
+  --f-text:    'Alef', 'Arial Hebrew', sans-serif;
+  --f-num:     'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
 
-  --shadow-1: 0 1px 2px rgb(42 35 28 / .06), 0 1px 3px rgb(42 35 28 / .04);
-  --shadow-2: 0 4px 16px rgb(42 35 28 / .08), 0 1px 3px rgb(42 35 28 / .05);
-  --shadow-3: 0 12px 40px rgb(42 35 28 / .16);
+  /* Four stops, ratio ~1.5. Nothing lives between them. */
+  --t-label: 12px;
+  --t-body:  16px;
+  --t-sub:   24px;
+  --t-head:  36px;
+  --t-hero:  48px;
 
-  --nav-h: 60px;
+  /* 4pt rhythm. Section spacing is asymmetric by design — see --gap-over. */
+  --s1: 4px;  --s2: 8px;  --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px;
+  --gap-over: 36px;   /* above a section head */
+  --gap-under: 12px;  /* below it — 3:1, deliberately */
+
+  --margin-col: 44px; /* the reserved right-hand column */
+  --nav-h: 58px;
   --safe-b: env(safe-area-inset-bottom, 0px);
-
-  --font: 'Heebo', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --row-h: 64px;      /* the one-handed minimum */
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     color-scheme: dark;
-    --paper:       #16130f;
-    --surface:     #1f1b16;
-    --surface-2:   #2a241d;
-    --line:        #352e25;
-    --line-strong: #4b4136;
-
-    --ink:   #f2ece4;
-    --ink-2: #b8ac9c;
-    --ink-3: #857a6c;
-
-    --clay:      #d98a63;
-    --clay-soft: #3a2519;
-    --sage:      #7fb392;
-    --sage-soft: #1e2f24;
-    --amber:     #d9b563;
-    --amber-soft:#332916;
-    --rose:      #e0736c;
-    --rose-soft: #37201e;
-
-    --shadow-1: 0 1px 2px rgb(0 0 0 / .3);
-    --shadow-2: 0 4px 16px rgb(0 0 0 / .35);
-    --shadow-3: 0 12px 40px rgb(0 0 0 / .5);
+    --paper:     #141310;
+    --paper-2:   #1e1c17;
+    --ink:       #e8e2d4;
+    --ink-2:     #a49b86;
+    --ink-3:     #7a725f;
+    --rule:      #35322a;
+    --rule-blue: #3f4a52;
+    --red:       #d4614a;
+    --red-wash:  #2b1d18;
+    --blue:      #7e9bb5;
+    --blue-wash: #1b2126;
   }
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --paper:       #16130f;
-  --surface:     #1f1b16;
-  --surface-2:   #2a241d;
-  --line:        #352e25;
-  --line-strong: #4b4136;
-  --ink:   #f2ece4;
-  --ink-2: #b8ac9c;
-  --ink-3: #857a6c;
-  --clay:      #d98a63;
-  --clay-soft: #3a2519;
-  --sage:      #7fb392;
-  --sage-soft: #1e2f24;
-  --amber:     #d9b563;
-  --amber-soft:#332916;
-  --rose:      #e0736c;
-  --rose-soft: #37201e;
-  --shadow-1: 0 1px 2px rgb(0 0 0 / .3);
-  --shadow-2: 0 4px 16px rgb(0 0 0 / .35);
-  --shadow-3: 0 12px 40px rgb(0 0 0 / .5);
+  --paper:     #141310;
+  --paper-2:   #1e1c17;
+  --ink:       #e8e2d4;
+  --ink-2:     #a49b86;
+  --ink-3:     #7a725f;
+  --rule:      #35322a;
+  --rule-blue: #3f4a52;
+  --red:       #d4614a;
+  --red-wash:  #2b1d18;
+  --blue:      #7e9bb5;
+  --blue-wash: #1b2126;
 }
 
-/* ── Reset ─────────────────────────────────────────────────────────────── */
+/* ── Reset ───────────────────────────────────────────────────────────── */
 
 *, *::before, *::after { box-sizing: border-box; }
+
+/* The one weird decision, held everywhere regardless of cost. A generator
+   cannot hold a constraint that hurts; this is what it costs and why we keep it. */
+* { border-radius: 0 !important; box-shadow: none !important; }
 
 html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  font-family: var(--font);
-  font-size: 16px;
-  line-height: 1.5;
+  font-family: var(--f-text);
+  font-size: var(--t-body);
+  font-weight: 400;
+  line-height: 1.7;               /* Hebrew has a huge x-height; 1.5 collides */
   color: var(--ink);
   background: var(--paper);
   -webkit-font-smoothing: antialiased;
-  /* iOS: stop the double-tap zoom that makes a list of checkboxes miserable. */
   touch-action: manipulation;
 }
 
-h1, h2, h3, h4, p, figure { margin: 0; }
+h1, h2, h3, p, figure { margin: 0; }
 button, input, select, textarea { font: inherit; color: inherit; }
-button { cursor: pointer; }
-a { color: var(--clay); }
+button { cursor: pointer; background: none; border: 0; padding: 0; text-align: inherit; }
+a { color: inherit; }
 
-/* Numbers must line up in a column. Hebrew text must not be tabular. */
-.num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
-
-:focus-visible {
-  outline: 2px solid var(--clay);
-  outline-offset: 2px;
-  border-radius: var(--r-sm);
-}
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: .01ms !important;
-    transition-duration: .01ms !important;
-  }
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 
-/* ── Shell ─────────────────────────────────────────────────────────────── */
+/* ── Numerals ────────────────────────────────────────────────────────── */
+/*
+   Every number in this app goes through .n. It is a different typeface from
+   the Hebrew around it, on purpose: newspapers have always set tables in a
+   face of their own, because a column only scans when every digit is the
+   same width — and Hebrew letters are not.
+
+   `isolate` is load-bearing. A shekel amount inside an RTL sentence is an
+   atomic LTR island; without this the bidi algorithm arbitrates the boundary
+   and the minus sign ends up on the wrong side of the number.
+*/
+.n {
+  font-family: var(--f-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: 1.06em;              /* optical match to Hebrew's tall x-height */
+  direction: ltr;
+  unicode-bidi: isolate;
+  letter-spacing: -0.01em;
+}
+
+/* The money column: fixed box at the row's left end, right-aligned inside it.
+   Every units digit in the app lands on one invisible vertical. */
+.amount {
+  min-width: 5.5em;
+  text-align: right;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.amount.over { color: var(--red); }
+
+/* ── Labels ──────────────────────────────────────────────────────────── */
+/*
+   Hebrew has no small caps. The substitute is small + heavy + tracked, and
+   nothing else in the app uses that combination — so it reads as a label and
+   can never be mistaken for content.
+*/
+.label {
+  font-size: var(--t-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  line-height: 1.4;
+}
+
+/* ── Shell ───────────────────────────────────────────────────────────── */
 
 .shell {
   min-height: 100%;
@@ -153,43 +173,144 @@ a { color: var(--clay); }
   padding-bottom: calc(var(--nav-h) + var(--safe-b));
 }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px 12px;
-  background: color-mix(in srgb, var(--paper) 88%, transparent);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid transparent;
-  transition: border-color .2s;
-}
-.topbar[data-scrolled='true'] { border-bottom-color: var(--line); }
-.topbar h1 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
-.topbar .sub { font-size: 13px; color: var(--ink-3); }
-.topbar .spacer { flex: 1; }
-
 .page {
   flex: 1;
-  padding: 4px 16px 24px;
-  max-width: 720px;
   width: 100%;
+  max-width: 640px;
   margin-inline: auto;
+  padding: 0 var(--s4) var(--s7);
 }
 
-@media (min-width: 900px) {
-  .shell { padding-bottom: 0; }
-  .page { max-width: 980px; padding-inline: 24px; }
+/* The masthead. Frank Ruhl 900 is a voice, used once per screen and never
+   below 24px — at body size it is weak and its Latin is embarrassing. */
+.masthead {
+  padding: var(--s5) var(--s4) var(--s3);
+  max-width: 640px;
+  margin-inline: auto;
+  width: 100%;
 }
+.masthead h1 {
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: var(--t-sub);
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+.masthead .sub { font-size: var(--t-label); color: var(--ink-3); margin-top: 2px; }
+.masthead-row { display: flex; align-items: baseline; gap: var(--s3); }
+.masthead-row .grow { flex: 1; min-width: 0; }
 
-/* ── Bottom navigation ─────────────────────────────────────────────────── */
+/* ── Rules ───────────────────────────────────────────────────────────── */
 /*
-   Five destinations, thumb-height, always visible. This is the pattern that
-   works on a phone held one-handed while the other hand holds a shopping
-   basket — which is genuinely where half of this app is used. */
+   A rule inset inside a margin is a card with extra steps. These bleed to the
+   screen edge; the page's own padding is cancelled with negative margins so
+   the line is genuinely full width and the content still sits on the measure.
+*/
+.rule, .rule-2 {
+  border: 0;
+  height: 0;
+  margin: 0 calc(var(--s4) * -1);
+  border-top: 1px solid var(--rule);
+}
+/* The accountant's double rule: the only "container" in the app, and it only
+   ever appears above a total.
+   The gap has to be 3px, not 1px. At 1px the two hairlines merge on a 2×
+   screen into a single thick bar, which reads as a filled block rather than
+   as the double rule it is — the whole convention is that you can see two
+   lines. */
+.rule-2 {
+  border-top: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  height: 5px;
+  background: transparent;
+}
 
+/* Section heading sitting on its rule — timetable logic, not a card header. */
+.section { margin-top: var(--gap-over); }
+.section > h2 {
+  font-size: var(--t-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  padding-bottom: var(--s2);
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--ink);
+}
+.section > h2 .count { color: var(--ink-3); font-weight: 400; letter-spacing: 0; }
+.section > .rows { margin-top: 0; }
+
+/* ── Rows ────────────────────────────────────────────────────────────── */
+/*
+   64px is not a style choice. It is the one-handed minimum for a screen read
+   while walking with a basket in the other hand, and the whole row is the hit
+   area so a jostled thumb cannot miss.
+*/
+.rows { display: flex; flex-direction: column; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  min-height: var(--row-h);
+  padding: var(--s3) 0;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  text-align: start;
+}
+.row:last-child { border-bottom: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.row .title { font-size: 17px; line-height: 1.35; }
+.row .meta { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
+
+/* The reserved margin column — the spine of every screen. Dates, marks and
+   quantities live here and nowhere else, so the eye always knows where to look. */
+.margin-col {
+  width: var(--margin-col);
+  flex: 0 0 var(--margin-col);
+  text-align: center;
+  color: var(--ink-3);
+  font-size: var(--t-label);
+}
+
+/* Press feedback without moving anything: the paper darkens, the layout does
+   not shift. A transform here would jitter the row under the thumb. */
+.row:active, .btn:active { background: var(--paper-2); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: 48px;
+  padding: 0 var(--s4);
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 400;
+  transition: background 100ms linear, color 100ms linear;
+}
+.btn:disabled { opacity: .4; cursor: not-allowed; }
+.btn-primary { background: var(--ink); color: var(--paper); font-weight: 700; }
+.btn-primary:active { background: var(--ink-2); }
+.btn-red { border-color: var(--red); color: var(--red); }
+.btn-block { width: 100%; }
+
+/* The small variants are smaller in ink, never in target. 44px is the floor
+   for anything a thumb has to find, and `btn-sm` is what the pantry's plus
+   and minus use — the two most-pressed controls in the app. Measured, not
+   assumed: a rendered pass caught these at 40px. */
+.btn-quiet { border-color: transparent; color: var(--ink-2); min-height: 44px; min-width: 44px; padding: 0 var(--s2); }
+.btn-sm { min-height: 44px; min-width: 44px; font-size: 14px; padding: 0 var(--s3); }
+
+/* ── Navigation ──────────────────────────────────────────────────────── */
+/*
+   Icon AND label, always. Two people who see a private symbol once a week
+   will never learn it, and an unlabelled tab bar is a tell besides.
+*/
 .nav {
   position: fixed;
   inset-inline: 0;
@@ -199,271 +320,251 @@ a { color: var(--clay); }
   grid-template-columns: repeat(5, 1fr);
   height: calc(var(--nav-h) + var(--safe-b));
   padding-bottom: var(--safe-b);
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(16px);
-  border-top: 1px solid var(--line);
+  background: var(--paper);
+  border-top: 1px solid var(--ink);
 }
-
 .nav a {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
+  gap: 2px;
   text-decoration: none;
   color: var(--ink-3);
   font-size: 11px;
-  font-weight: 500;
+  letter-spacing: 0.02em;
   position: relative;
-  transition: color .15s;
+  border-inline-start: 1px solid var(--rule);
 }
-.nav a[aria-current='page'] { color: var(--clay); }
-.nav a .glyph { font-size: 20px; line-height: 1; }
-.nav a .badge {
+.nav a:first-child { border-inline-start: 0; }
+.nav a[aria-current='page'] { color: var(--ink); font-weight: 700; }
+/* The current tab is marked by a printed bar above it, not by a pill. */
+.nav a[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  top: 0; inset-inline: 0;
+  height: 3px;
+  background: var(--ink);
+}
+.nav .tally {
+  font-family: var(--f-num);
+  font-size: 10px;
+  color: var(--red);
   position: absolute;
   top: 6px;
-  inset-inline-end: calc(50% - 20px);
-  min-width: 17px;
-  height: 17px;
-  padding: 0 4px;
-  border-radius: var(--r-full);
-  background: var(--clay);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 700;
-  display: grid;
-  place-items: center;
+  inset-inline-end: 12px;
 }
 
-@media (min-width: 900px) {
+@media (min-width: 860px) {
+  .shell { padding-bottom: 0; }
   .nav {
-    position: sticky;
-    top: 0;
-    bottom: auto;
-    order: -1;
-    grid-template-columns: repeat(5, max-content);
+    position: sticky; top: 0; bottom: auto; order: -1;
+    height: auto; padding: 0;
+    border-top: 0; border-bottom: 1px solid var(--ink);
+    grid-template-columns: repeat(5, minmax(0, 140px));
     justify-content: center;
-    gap: 4px;
-    height: auto;
-    padding: 8px;
-    border-top: 0;
-    border-bottom: 1px solid var(--line);
   }
-  .nav a { flex-direction: row; gap: 8px; padding: 8px 16px; border-radius: var(--r-full); font-size: 14px; }
-  .nav a[aria-current='page'] { background: var(--clay-soft); }
-  .nav a .glyph { font-size: 16px; }
-  .nav a .badge { position: static; }
+  .nav a { flex-direction: row; gap: var(--s2); padding: var(--s3) 0; font-size: 14px; }
+  .page, .masthead { max-width: 760px; }
 }
 
-/* ── Cards ─────────────────────────────────────────────────────────────── */
+/* ── Forms ───────────────────────────────────────────────────────────── */
 
-.card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  box-shadow: var(--shadow-1);
-}
-.card + .card { margin-top: 12px; }
-.card-pad { padding: 16px; }
-
-.section { margin-top: 24px; }
-.section > h2 {
-  font-size: 13px;
+.field { display: block; margin-bottom: var(--s4); }
+.field > span {
+  display: block;
+  font-size: var(--t-label);
   font-weight: 700;
-  color: var(--ink-3);
-  letter-spacing: .04em;
-  margin-bottom: 8px;
-  padding-inline-start: 4px;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  margin-bottom: var(--s1);
 }
 
-/* ── Buttons ───────────────────────────────────────────────────────────── */
-
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 44px;
-  padding: 0 18px;
-  border: 1px solid transparent;
-  border-radius: var(--r-full);
-  background: var(--surface-2);
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 500;
-  transition: transform .1s, filter .15s, background .15s;
-  white-space: nowrap;
-}
-.btn:active { transform: scale(.97); }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn-primary { background: var(--clay); color: #fff; box-shadow: var(--shadow-1); }
-.btn-ghost { background: transparent; border-color: var(--line-strong); }
-.btn-quiet { background: transparent; color: var(--ink-2); min-height: 36px; padding: 0 10px; }
-.btn-danger { background: var(--bad-soft); color: var(--bad); }
-.btn-sm { min-height: 34px; padding: 0 12px; font-size: 14px; }
-.btn-block { width: 100%; }
-
-.fab {
-  position: fixed;
-  inset-inline-end: 18px;
-  bottom: calc(var(--nav-h) + var(--safe-b) + 16px);
-  z-index: 25;
-  width: 56px;
-  height: 56px;
+/* An underline, not a box. A ruled line to write on is the whole metaphor,
+   and it removes one more rectangle from the screen. */
+.input, .select {
+  width: 100%;
+  min-height: 48px;
+  padding: var(--s2) 0;
   border: 0;
-  border-radius: var(--r-full);
-  background: var(--clay);
-  color: #fff;
-  font-size: 26px;
-  line-height: 1;
-  box-shadow: var(--shadow-3);
-  display: grid;
-  place-items: center;
-}
-@media (min-width: 900px) { .fab { bottom: 28px; } }
-
-/* ── Rows ──────────────────────────────────────────────────────────────── */
-
-.rows { display: flex; flex-direction: column; }
-.row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--line);
-  background: none;
-  border-inline: 0;
-  border-top: 0;
-  width: 100%;
-  text-align: start;
-}
-.row:last-child { border-bottom: 0; }
-.row .grow { flex: 1; min-width: 0; }
-.row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row .meta { font-size: 13px; color: var(--ink-3); }
-
-/* ── Forms ─────────────────────────────────────────────────────────────── */
-
-.field { display: block; margin-bottom: 14px; }
-.field > span { display: block; font-size: 13px; font-weight: 500; color: var(--ink-2); margin-bottom: 6px; }
-.input, .select, textarea.input {
-  width: 100%;
-  min-height: 46px;
-  padding: 10px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
+  border-bottom: 1px solid var(--ink);
+  background: transparent;
   color: var(--ink);
+  font-size: var(--t-body);
 }
-.input:focus, .select:focus { border-color: var(--clay); outline: none; box-shadow: 0 0 0 3px var(--clay-soft); }
-.input[type='number'] { font-variant-numeric: tabular-nums; }
-.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.input:focus, .select:focus { outline: none; border-bottom-width: 3px; padding-bottom: calc(var(--s2) - 2px); }
+.input[type='number'], .input[type='date'] { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.input::placeholder { color: var(--ink-3); }
+.select { appearance: none; padding-inline-end: var(--s5); }
+.row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s4); }
 
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip {
-  padding: 7px 14px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-full);
-  background: var(--surface);
+/* Filter chips: a printed tab strip, underlined when current. */
+.tabs { display: flex; gap: 0; border-bottom: 1px solid var(--rule); }
+.tab {
+  padding: var(--s2) var(--s3);
   font-size: 14px;
   color: var(--ink-2);
+  border-bottom: 3px solid transparent;
+  margin-bottom: -1px;
+  min-height: 44px;
 }
-.chip[aria-pressed='true'] { background: var(--clay); border-color: var(--clay); color: #fff; font-weight: 500; }
+.tab[aria-pressed='true'] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
+.tab .n { font-size: 0.95em; color: var(--ink-3); }
 
-/* ── Sheet (bottom modal) ──────────────────────────────────────────────── */
+/* ── Sheet ───────────────────────────────────────────────────────────── */
 
 .sheet-backdrop {
   position: fixed;
   inset: 0;
   z-index: 40;
-  background: rgb(20 16 12 / .45);
+  background: rgb(20 18 14 / .55);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  animation: fade .18s ease;
 }
 .sheet {
   width: 100%;
   max-width: 560px;
-  max-height: 90dvh;
+  max-height: 92dvh;
   overflow-y: auto;
   background: var(--paper);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
-  padding: 8px 18px calc(24px + var(--safe-b));
-  animation: rise .22s cubic-bezier(.2, .8, .3, 1);
+  border-top: 3px solid var(--ink);
+  padding: var(--s5) var(--s4) calc(var(--s6) + var(--safe-b));
+  animation: rise 160ms cubic-bezier(.2, .7, .3, 1);
 }
-.sheet-grip { width: 40px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 6px auto 14px; }
-.sheet h2 { font-size: 19px; font-weight: 700; margin-bottom: 14px; }
-
+.sheet h2 {
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: var(--t-sub);
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  margin-bottom: var(--s5);
+}
 @media (min-width: 640px) {
   .sheet-backdrop { align-items: center; }
-  .sheet { border-radius: var(--r-lg); max-height: 84dvh; }
+  .sheet { border: 3px solid var(--ink); max-height: 86dvh; }
+}
+@keyframes rise { from { transform: translateY(14px); } }
+
+/* ── The hero number ─────────────────────────────────────────────────── */
+/*
+   Exactly one per screen. Scarcity is the hierarchy: if two numbers are this
+   size, neither is the answer to anything.
+*/
+.hero {
+  padding: var(--s5) 0 var(--s4);
+  border-bottom: 1px solid var(--ink);
+}
+.hero .figure {
+  font-family: var(--f-num);
+  /* Proportional here, tabular everywhere else — the one deliberate exception.
+     Tabular figures give the grouping comma a full digit cell, which at 36px
+     reads as "2 , 840". A column needs that even width to scan; a single hero
+     number has nothing to align with, so it gets the tighter setting. */
+  font-variant-numeric: proportional-nums lining-nums;
+  font-size: var(--t-head);
+  font-weight: 600;
+  line-height: 1;
+  direction: ltr;
+  unicode-bidi: isolate;
+  letter-spacing: -0.02em;
+  margin-top: var(--s2);
+}
+.hero .figure.over { color: var(--red); }
+@media (min-width: 420px) { .hero .figure { font-size: var(--t-hero); } }
+
+/* ── Meters ──────────────────────────────────────────────────────────── */
+/* A printed gauge: a hairline trough with a solid ink bar. No gradient.
+   `display: block` is load-bearing — these are rendered as <span> inside a
+   row, and height on an inline box does nothing at all, so the gauge was
+   silently invisible on every envelope. */
+.meter { display: block; height: 4px; background: var(--rule); margin: var(--s2) 0 var(--s1); }
+.meter > i { display: block; height: 100%; background: var(--ink); }
+.meter.over > i { background: var(--red); }
+
+/* ── Marks ───────────────────────────────────────────────────────────── */
+/*
+   A mark never appears alone — it always sits beside its word. Colour is
+   never the only carrier of meaning: 8% of men cannot separate red from
+   green, and this app's red means "act now".
+*/
+.mark { font-size: var(--t-label); font-weight: 700; letter-spacing: 0.04em; }
+.mark-red  { color: var(--red); }
+.mark-blue { color: var(--blue); }
+
+/* An item the system added by itself, annotated in blue pencil in the margin —
+   the way a grocer noted what he had filled in on your behalf. */
+.by-system { border-inline-start: 3px solid var(--blue); padding-inline-start: var(--s3); }
+
+.struck { text-decoration: line-through; text-decoration-color: var(--red); text-decoration-thickness: 2px; color: var(--ink-3); }
+
+/* ── States ──────────────────────────────────────────────────────────── */
+
+.note-error {
+  border-top: 1px solid var(--red);
+  border-bottom: 1px solid var(--red);
+  background: var(--red-wash);
+  padding: var(--s3) var(--s4);
+  margin: var(--s4) calc(var(--s4) * -1);
+  color: var(--red);
+  font-size: 15px;
 }
 
-@keyframes fade { from { opacity: 0; } }
-@keyframes rise { from { transform: translateY(18px); opacity: .4; } }
-
-/* ── Progress ──────────────────────────────────────────────────────────── */
-
-.bar { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
-.bar > i { display: block; height: 100%; border-radius: 3px; background: var(--sage); transition: width .3s; }
-.bar.warn > i { background: var(--amber); }
-.bar.bad  > i { background: var(--bad); }
-
-/* ── Misc ──────────────────────────────────────────────────────────────── */
-
-.empty { text-align: center; padding: 40px 20px; color: var(--ink-3); }
-.empty .glyph { font-size: 40px; display: block; margin-bottom: 10px; opacity: .6; }
-.empty p { margin-bottom: 14px; }
-
-.pill {
-  display: inline-block;
-  padding: 3px 9px;
-  border-radius: var(--r-full);
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--surface-2);
+/* No centred column, no faded circle icon, no pill CTA. A ledger page with
+   nothing written on it yet still shows its ruling. */
+.empty {
+  padding: var(--s6) 0;
+  border-bottom: 1px solid var(--rule);
   color: var(--ink-2);
 }
-.pill.ok   { background: var(--ok-soft);   color: var(--ok); }
-.pill.warn { background: var(--warn-soft); color: var(--warn); }
-.pill.bad  { background: var(--bad-soft);  color: var(--bad); }
-
-.pos { color: var(--sage); }
-.neg { color: var(--ink); }
-.muted { color: var(--ink-3); }
+.empty .headline { font-family: var(--f-display); font-weight: 900; font-size: var(--t-sub); color: var(--ink); line-height: 1.25; }
+.empty p { margin-top: var(--s2); font-size: 15px; max-width: 34ch; }
+.empty .btn { margin-top: var(--s4); }
 
 .toast {
   position: fixed;
-  inset-inline: 16px;
-  bottom: calc(var(--nav-h) + var(--safe-b) + 16px);
+  inset-inline: 0;
+  bottom: calc(var(--nav-h) + var(--safe-b));
   z-index: 50;
-  margin-inline: auto;
-  max-width: 420px;
-  padding: 13px 16px;
-  border-radius: var(--r);
   background: var(--ink);
   color: var(--paper);
-  box-shadow: var(--shadow-3);
+  padding: var(--s3) var(--s4);
   font-size: 15px;
-  animation: rise .2s ease;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
 }
-.toast.bad { background: var(--bad); color: #fff; }
+.toast.bad { background: var(--red); color: #fff; }
+.toast .undo { margin-inline-start: auto; font-weight: 700; text-decoration: underline; white-space: nowrap; }
 
-.spinner {
-  width: 22px; height: 22px;
-  border: 2.5px solid var(--line-strong);
-  border-top-color: var(--clay);
-  border-radius: 50%;
-  animation: spin .7s linear infinite;
-  margin: 40px auto;
+/* Not a spinner. A ruled placeholder — the page's structure arrives before
+   its content, so nothing shifts when the numbers land. */
+.loading { padding: var(--s5) 0; }
+.loading i {
+  display: block;
+  height: 1px;
+  background: var(--rule);
+  margin-bottom: var(--s5);
+  animation: breathe 1.4s ease-in-out infinite;
 }
-@keyframes spin { to { transform: rotate(360deg); } }
+.loading i:nth-child(2) { animation-delay: .18s; }
+.loading i:nth-child(3) { animation-delay: .36s; }
+@keyframes breathe { 50% { background: var(--ink-3); } }
 
-.center-screen {
+.gate {
   min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  max-width: 380px;
+  margin-inline: auto;
+  padding: var(--s5);
 }
+.gate .wordmark {
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: var(--t-head);
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.gate p { color: var(--ink-2); margin: var(--s3) 0 var(--s6); font-size: 15px; }

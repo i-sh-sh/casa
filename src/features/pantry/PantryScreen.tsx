@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
-import { AsyncForm, Empty, ErrorNote, Field, Sheet, Spinner, useAsync, useToast } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
+import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { AISLES, expiryState } from '@shared/pantry.js';
 import type { Product } from '@shared/types.js';
@@ -11,10 +12,14 @@ const today = () => new Date().toISOString().slice(0, 10);
 /**
  * What is in the house, and what is about to not be.
  *
- * The number that matters on this screen is not "how much do we have" but
- * "how much compared to how much we want to have" — `min_qty` is the whole
- * mechanism, because it is what turns an inventory (a chore) into a shopping
- * list (a service).
+ * The figure that matters is not "how much" but "how much against how much we
+ * want" — `min_qty` is the whole mechanism, because it is what turns an
+ * inventory (a chore nobody keeps up) into a shopping list (a service).
+ *
+ * The minus button is the most important control in the entire app. Ten
+ * seconds after finishing the milk is the only moment it will ever be
+ * recorded, and if that costs a search box and a form it will not happen —
+ * and once the stock is wrong, the list that depends on it is worthless.
  */
 export function PantryScreen() {
   const [filter, setFilter] = useState<'all' | 'low' | 'expiring'>('all');
@@ -41,75 +46,81 @@ export function PantryScreen() {
   }, {});
 
   async function consume(product: Product, qty: number) {
-    // Optimistic, then reconciled: the tile drops immediately, and the server's
-    // answer replaces the guess. Waiting first makes "השתמשנו באחד" feel broken.
+    // Optimistic, then reconciled. Nothing stands between the tap and the
+    // number changing: a wait here gets tapped twice, and a double decrement
+    // corrupts the count that the shopping list is generated from.
     products.set((prev) => (prev ?? []).map((p) => (p.id === product.id ? { ...p, in_stock: Math.max(0, p.in_stock - qty) } : p)));
     try {
       const res = await api.post<{ added_to_list: string[] }>(`/pantry/products/${product.id}/consume`, { qty });
-      if (res.added_to_list.length > 0) toast.show(`נוסף לרשימת הקניות: ${res.added_to_list.join(', ')}`);
+      if (res.added_to_list.length > 0) toast.show(`נכנס לרשימת הקניות · ${res.added_to_list.join(', ')}`);
       products.reload();
     } catch (err) {
       products.reload();
-      toast.show(err instanceof Error ? err.message : 'לא הצלחנו לעדכן', 'bad');
+      toast.show(err instanceof Error ? err.message : 'לא הצלחנו לעדכן', { tone: 'bad' });
     }
   }
 
   return (
     <>
-      <TopBar
-        title="מזווה"
-        subtitle={low.length ? `${low.length} נגמרים` : `${all.length} מוצרים`}
-      />
+      <TopBar title="מזווה" subtitle={low.length ? `${low.length} נגמרים` : `${all.length} מוצרים`} />
 
       <div className="page">
-        <div className="chips" style={{ marginBottom: 14 }}>
-          <button className="chip" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>הכול · {all.length}</button>
-          <button className="chip" aria-pressed={filter === 'low'} onClick={() => setFilter('low')}>נגמר · {low.length}</button>
-          <button className="chip" aria-pressed={filter === 'expiring'} onClick={() => setFilter('expiring')}>תוקף · {expiring.length}</button>
+        <div className="tabs">
+          <button className="tab" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
+            הכול <span className="n">{all.length}</span>
+          </button>
+          <button className="tab" aria-pressed={filter === 'low'} onClick={() => setFilter('low')}>
+            נגמר <span className="n">{low.length}</span>
+          </button>
+          <button className="tab" aria-pressed={filter === 'expiring'} onClick={() => setFilter('expiring')}>
+            תוקף <span className="n">{expiring.length}</span>
+          </button>
         </div>
 
-        <input
-          className="input"
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="חיפוש מוצר…"
-          style={{ marginBottom: 16 }}
-        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s2)', marginTop: 'var(--s4)' }}>
+          <Icon name="search" size={18} />
+          <input
+            className="input"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="חיפוש מוצר"
+            aria-label="חיפוש מוצר"
+          />
+        </div>
 
-        {products.loading && !products.data && <Spinner />}
+        {products.loading && !products.data && <Loading />}
         {products.error && <ErrorNote message={products.error} onRetry={products.reload} />}
 
         {!products.loading && shown.length === 0 && (
           <Empty
-            glyph="🥫"
-            title={filter === 'all' ? 'המזווה ריק' : 'אין כאן כלום'}
-            hint={filter === 'all' ? 'הוסיפו מוצר, קבעו לו כמות מינימלית, והרשימה תכתוב את עצמה.' : undefined}
-            action={filter === 'all' ? <button className="btn btn-primary" onClick={() => setCreating(true)}>הוספת מוצר</button> : undefined}
+            headline={filter === 'all' ? 'המזווה ריק' : 'אין כאן כלום'}
+            hint={filter === 'all' ? 'הוסיפו מוצר, קבעו לו כמות מינימלית, והרשימה תכתוב את עצמה מכאן והלאה.' : undefined}
+            action={filter === 'all' ? <button className="btn" onClick={() => setCreating(true)}>הוספת מוצר</button> : undefined}
           />
         )}
 
         {Object.entries(byAisle).map(([aisle, aisleProducts]) => (
           <section className="section" key={aisle}>
-            <h2>{aisle}</h2>
-            <div className="card">
-              <div className="rows">
-                {aisleProducts.map((product) => (
-                  <ProductRow
-                    key={product.id}
-                    product={product}
-                    onConsume={(qty) => void consume(product, qty)}
-                    onStock={() => setStocking(product)}
-                    onEdit={() => setEditing(product)}
-                  />
-                ))}
-              </div>
+            <h2>{aisle} <span className="count n">{aisleProducts.length}</span></h2>
+            <div className="rows">
+              {aisleProducts.map((product) => (
+                <ProductRow
+                  key={product.id}
+                  product={product}
+                  onConsume={(qty) => void consume(product, qty)}
+                  onStock={() => setStocking(product)}
+                  onEdit={() => setEditing(product)}
+                />
+              ))}
             </div>
           </section>
         ))}
-      </div>
 
-      <button className="fab" onClick={() => setCreating(true)} aria-label="הוספת מוצר">+</button>
+        <button className="btn btn-block" style={{ marginTop: 'var(--s6)' }} onClick={() => setCreating(true)}>
+          <Icon name="plus" size={18} /> הוספת מוצר
+        </button>
+      </div>
 
       {(creating || editing) && (
         <ProductSheet
@@ -138,20 +149,29 @@ function ProductRow({ product, onConsume, onStock, onEdit }: {
   const expiry = expiryState(product.next_expiry, today());
   return (
     <div className="row">
-      <div className="grow">
-        <button className="btn btn-quiet" onClick={onEdit} style={{ padding: 0, minHeight: 0, display: 'block', textAlign: 'start' }}>
-          <span className="title">{product.name}</span>
-        </button>
-        <div className="meta">
-          <span className="num">{product.in_stock}</span> {product.unit}
-          {product.min_qty > 0 && <> · מינימום <span className="num">{product.min_qty}</span></>}
-          {product.below_min && <> · <span className="pill bad">נגמר</span></>}
-          {expiry === 'soon' && <> · <span className="pill warn">תוקף קרוב</span></>}
-          {expiry === 'expired' && <> · <span className="pill bad">פג תוקף</span></>}
-        </div>
-      </div>
-      <button className="btn btn-sm btn-ghost" onClick={() => onConsume(1)} disabled={product.in_stock <= 0} aria-label={`השתמשנו ב${product.name}`}>−</button>
-      <button className="btn btn-sm btn-ghost" onClick={onStock} aria-label={`הוספת ${product.name} למלאי`}>+</button>
+      <button onClick={onEdit} className="grow" style={{ minWidth: 0 }} aria-label={`עריכת ${product.name}`}>
+        <span className="title" style={{ display: 'block' }}>{product.name}</span>
+        <span className="meta">
+          {product.min_qty > 0 && <>מינימום <span className="n">{product.min_qty}</span></>}
+          {/* A state is never carried by colour or a glyph alone — two people
+              who see a private symbol once a week will never learn it. */}
+          {product.below_min && <> · <span className="mark mark-red">נגמר</span></>}
+          {expiry === 'soon' && <> · <span className="mark mark-red">תוקף קרוב</span></>}
+          {expiry === 'expired' && <> · <span className="mark mark-red">פג תוקף</span></>}
+        </span>
+      </button>
+
+      <span className="n" style={{ fontSize: 20, fontWeight: 500, minWidth: '2.5em', textAlign: 'right' }}>
+        {product.in_stock}
+      </span>
+      <span className="meta" style={{ minWidth: '2.5em' }}>{product.unit}</span>
+
+      <button className="btn btn-sm" onClick={() => onConsume(1)} disabled={product.in_stock <= 0} aria-label={`השתמשנו באחד — ${product.name}`}>
+        <Icon name="minus" size={16} />
+      </button>
+      <button className="btn btn-sm" onClick={onStock} aria-label={`הכנסה למזווה — ${product.name}`}>
+        <Icon name="plus" size={16} />
+      </button>
     </div>
   );
 }
@@ -204,11 +224,11 @@ function ProductSheet({ product, onClose, onSaved }: { product: Product | null; 
             </select>
           </Field>
         </div>
-        <Field label="ימי מדף (למילוי תפוגה אוטומטי)">
-          <input className="input" type="number" inputMode="numeric" min="0" value={shelfLife} onChange={(e) => setShelfLife(e.target.value)} placeholder="למשל 7 לחלב" />
+        <Field label="ימי מדף · למילוי תפוגה אוטומטי">
+          <input className="input" type="number" inputMode="numeric" min="0" value={shelfLife} onChange={(e) => setShelfLife(e.target.value)} placeholder="7" />
         </Field>
-        <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
-          כמות מינימלית 0 = לא נטריד אתכם. מספר גדול מ-0 = ברגע שנרד מתחת אליו, המוצר נכנס לרשימת הקניות לבד.
+        <p className="meta" style={{ marginBottom: 'var(--s4)' }}>
+          כמות מינימלית 0 — לא נטריד אתכם על המוצר הזה. מספר גדול מ־0 — ברגע שנרד מתחתיו הוא נכנס לרשימת הקניות מעצמו.
         </p>
       </AsyncForm>
     </Sheet>
@@ -221,9 +241,9 @@ function StockSheet({ product, onClose, onSaved }: { product: Product; onClose: 
   const [price, setPrice] = useState('');
 
   return (
-    <Sheet title={`הכנסת ${product.name} למזווה`} onClose={onClose}>
+    <Sheet title={`הכנסת ${product.name}`} onClose={onClose}>
       <AsyncForm
-        submitLabel="הכנסה"
+        submitLabel="הכנסה למזווה"
         onSubmit={async () => {
           await api.post(`/pantry/products/${product.id}/stock`, {
             qty: Number(qty),
@@ -234,10 +254,10 @@ function StockSheet({ product, onClose, onSaved }: { product: Product; onClose: 
         }}
       >
         <div className="row-2">
-          <Field label={`כמה (${product.unit})`}>
-            <input className="input" type="number" inputMode="decimal" min="0.1" step="0.5" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus />
+          <Field label={`כמה · ${product.unit}`}>
+            <input className="input" type="number" inputMode="decimal" min="0.1" step="1" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus />
           </Field>
-          <Field label="מחיר (לא חובה)">
+          <Field label="מחיר · ₪">
             <input className="input" type="number" inputMode="decimal" min="0" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} />
           </Field>
         </div>
@@ -245,8 +265,8 @@ function StockSheet({ product, onClose, onSaved }: { product: Product; onClose: 
           <input className="input" type="date" value={expiresOn} onChange={(e) => setExpiresOn(e.target.value)} />
         </Field>
         {product.shelf_life_days && !expiresOn && (
-          <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
-            אם תשאירו ריק, נחשב תפוגה של {product.shelf_life_days} ימים מהיום.
+          <p className="meta" style={{ marginBottom: 'var(--s4)' }}>
+            ריק — נחשב <span className="n">{product.shelf_life_days}</span> ימים מהיום.
           </p>
         )}
       </AsyncForm>

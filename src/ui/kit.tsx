@@ -2,16 +2,16 @@ import {
   createContext, useCallback, useContext, useEffect, useRef, useState,
   type ReactNode, type FormEvent,
 } from 'react';
+import { Icon } from './Icon.js';
 
 // ── Sheet ────────────────────────────────────────────────────────────────
 
 /**
- * The one modal shape in the app: a sheet that rises from the bottom.
+ * The one modal shape in the app: a sheet that rises from the bottom edge.
  *
- * Everything that adds or edits uses it, because on a phone a form that slides
- * up from the thumb is reachable and a centred dialog is not. On a wide screen
- * the same component centres itself — one component, two behaviours, no second
- * implementation to keep in sync.
+ * It is bordered, not floated — a 3px ink rule instead of a shadow, because
+ * this app has no elevation. On a wide screen the same component centres
+ * itself and closes the border all the way round.
  */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const panel = useRef<HTMLDivElement>(null);
@@ -19,11 +19,8 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
-    // The page behind must not scroll while a sheet is open — on iOS that
-    // scroll is what makes a sheet feel like it is floating over nothing.
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    // Focus moves into the sheet so a keyboard user is not left behind it.
     panel.current?.focus();
     return () => {
       document.removeEventListener('keydown', onKey);
@@ -32,33 +29,40 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   }, [onClose]);
 
   return (
-    <div
-      className="sheet-backdrop"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-      role="presentation"
-    >
+    <div className="sheet-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }} role="presentation">
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} ref={panel} tabIndex={-1}>
-        <div className="sheet-grip" />
-        <h2>{title}</h2>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--s3)' }}>
+          <h2 style={{ flex: 1 }}>{title}</h2>
+          <button className="btn btn-quiet" onClick={onClose} aria-label="סגירה"><Icon name="close" size={18} /></button>
+        </div>
         {children}
       </div>
     </div>
   );
 }
 
-// ── Toast ────────────────────────────────────────────────────────────────
+// ── Toast, with undo ─────────────────────────────────────────────────────
 
-interface ToastValue { show: (message: string, tone?: 'ok' | 'bad') => void }
+interface ToastValue {
+  show: (message: string, opts?: { tone?: 'ink' | 'bad'; undo?: () => void }) => void;
+}
 const ToastContext = createContext<ToastValue>({ show: () => {} });
 
+/**
+ * Ticking an item off the shopping list writes to the pantry, which makes it
+ * the one destructive action in daily use — so it gets an undo rather than a
+ * confirmation. A confirmation before every tick would be unusable in an
+ * aisle; five seconds to take it back is not.
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toast, setToast] = useState<{ message: string; tone: 'ok' | 'bad' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; tone: 'ink' | 'bad'; undo?: () => void } | null>(null);
   const timer = useRef<number>();
 
-  const show = useCallback((message: string, tone: 'ok' | 'bad' = 'ok') => {
-    setToast({ message, tone });
+  const show = useCallback<ToastValue['show']>((message, opts = {}) => {
+    const tone = opts.tone ?? 'ink';
+    setToast({ message, tone, undo: opts.undo });
     window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => setToast(null), tone === 'bad' ? 5000 : 2800);
+    timer.current = window.setTimeout(() => setToast(null), opts.undo ? 5000 : tone === 'bad' ? 5000 : 2600);
   }, []);
 
   useEffect(() => () => window.clearTimeout(timer.current), []);
@@ -67,10 +71,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={{ show }}>
       {children}
       {toast && (
-        // aria-live so a screen reader hears "נשמר" too — the visual flash is
-        // the whole confirmation, and it is invisible to anyone not looking.
         <div className={`toast ${toast.tone === 'bad' ? 'bad' : ''}`} role="status" aria-live="polite">
-          {toast.message}
+          <span>{toast.message}</span>
+          {toast.undo && (
+            <button
+              className="undo"
+              onClick={() => { toast.undo?.(); setToast(null); window.clearTimeout(timer.current); }}
+            >
+              ביטול
+            </button>
+          )}
         </div>
       )}
     </ToastContext.Provider>
@@ -89,13 +99,6 @@ export interface AsyncState<T> {
   set: (updater: (prev: T | null) => T | null) => void;
 }
 
-/**
- * Load-on-mount with a reload handle.
- *
- * `set` exists so a screen can apply a change it already knows succeeded
- * without a round trip — ticking an item off a shopping list should move it
- * the instant it is tapped, not after 300ms of network.
- */
 export function useAsync<T>(loader: () => Promise<T>, deps: unknown[] = []): AsyncState<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,35 +127,51 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   return <label className="field"><span>{label}</span>{children}</label>;
 }
 
-export function Empty({ glyph, title, hint, action }: { glyph: string; title: string; hint?: string; action?: ReactNode }) {
+/**
+ * Not a spinner.
+ *
+ * The page's ruling arrives before its content, so the structure is already
+ * on screen when the numbers land and nothing shifts underneath the reader.
+ * A centred spinner tells you only that you are waiting.
+ */
+export function Loading() {
   return (
-    <div className="empty">
-      <span className="glyph" aria-hidden="true">{glyph}</span>
-      <p><strong style={{ color: 'var(--ink-2)' }}>{title}</strong></p>
-      {hint && <p style={{ fontSize: 14 }}>{hint}</p>}
-      {action}
-    </div>
-  );
-}
-
-export function Spinner() { return <div className="spinner" role="status" aria-label="טוען" />; }
-
-export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () => void }) {
-  return (
-    <div className="card card-pad" style={{ borderColor: 'var(--bad)', background: 'var(--bad-soft)' }}>
-      <p style={{ color: 'var(--bad)' }}>{message}</p>
-      {onRetry && <button className="btn btn-sm btn-ghost" style={{ marginTop: 10 }} onClick={onRetry}>נסו שוב</button>}
+    <div className="loading" role="status" aria-label="טוען">
+      <i /><i /><i />
     </div>
   );
 }
 
 /**
- * A form that cannot be double-submitted and never loses the error.
+ * An empty state that is a ruled page with nothing written on it yet.
  *
- * The pattern it removes from every screen: disable while in flight, catch,
- * surface the server's sentence, re-enable. Getting that wrong once means a
- * double-tap creates two transactions.
+ * Deliberately not the centred column with a faded circular icon, a bold
+ * line, a grey subline and a pill button — that exact composition is the most
+ * copied empty state on the web, and it is one of the surest tells.
  */
+export function Empty({ headline, hint, action }: { headline: string; hint?: string; action?: ReactNode }) {
+  return (
+    <div className="empty">
+      <div className="headline">{headline}</div>
+      {hint && <p>{hint}</p>}
+      {action}
+    </div>
+  );
+}
+
+export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="note-error" role="alert">
+      <div style={{ display: 'flex', gap: 'var(--s2)', alignItems: 'flex-start' }}>
+        <Icon name="alert" size={18} />
+        <div style={{ flex: 1 }}>{message}</div>
+      </div>
+      {onRetry && <button className="btn btn-sm btn-red" style={{ marginTop: 'var(--s3)' }} onClick={onRetry}>נסו שוב</button>}
+    </div>
+  );
+}
+
+/** A form that cannot be double-submitted and never swallows the server's sentence. */
 export function AsyncForm({ onSubmit, submitLabel, children, disabled }: {
   onSubmit: () => Promise<void>;
   submitLabel: string;
@@ -179,7 +198,7 @@ export function AsyncForm({ onSubmit, submitLabel, children, disabled }: {
   return (
     <form onSubmit={handle} noValidate>
       {children}
-      {error && <p style={{ color: 'var(--bad)', fontSize: 14, marginBottom: 10 }}>{error}</p>}
+      {error && <p style={{ color: 'var(--red)', fontSize: 15, marginBottom: 'var(--s3)' }}>{error}</p>}
       <button className="btn btn-primary btn-block" type="submit" disabled={busy || disabled}>
         {busy ? 'רגע…' : submitLabel}
       </button>

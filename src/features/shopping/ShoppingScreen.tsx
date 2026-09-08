@@ -1,56 +1,75 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
-import { AsyncForm, Empty, ErrorNote, Field, Sheet, Spinner, useAsync, useToast } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
+import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
+import { sortForShopping } from '@shared/pantry.js';
+import { formatILS } from '@shared/money.js';
 import type { Account, Category, ShoppingItem } from '@shared/types.js';
 
 /**
- * The list, standing up, one-handed, in an aisle.
+ * The list, standing up, one hand, basket in the other.
  *
- * Everything on this screen is sized for that: taps are large, the tick is
- * optimistic (the row moves the instant it is touched, not when the server
- * agrees), and items are grouped by aisle in walking order rather than by when
- * they were typed — the order they were typed in is the one order guaranteed
- * to walk the shop twice.
+ * Two decisions here come straight from how it is actually used, and both are
+ * the opposite of what looks tidiest:
+ *
+ * **A ticked item does not leave.** It stays exactly where it was, struck
+ * through. A row that vanishes under the thumb destroys the sense of place on
+ * a list you are walking down, and — worse — everything below it jumps up by
+ * one row, which is how the next item gets ticked by accident. Bought items
+ * are only separated out on the next visit.
+ *
+ * **The tick is optimistic and instantly reversible.** It writes to the
+ * pantry, so it is the one destructive action in daily use; a confirmation
+ * would be unusable in an aisle, but five seconds of undo is not. Nothing —
+ * no spinner, no animation, no round trip — stands between the tap and the
+ * mark.
  */
 export function ShoppingScreen() {
-  const list = useAsync(() => api.get<ShoppingItem[]>('/shopping/items', { status: 'open' }));
-  const bought = useAsync(() => api.get<ShoppingItem[]>('/shopping/items', { status: 'bought' }));
+  const list = useAsync(async () => {
+    const [open, bought] = await Promise.all([
+      api.get<ShoppingItem[]>('/shopping/items', { status: 'open' }),
+      api.get<ShoppingItem[]>('/shopping/items', { status: 'bought' }),
+    ]);
+    return [...open, ...bought];
+  });
   const [adding, setAdding] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const toast = useToast();
 
   const items = list.data ?? [];
-  const boughtItems = bought.data ?? [];
+  const open = items.filter((i) => i.status === 'open');
+  const bought = items.filter((i) => i.status === 'bought');
 
-  const byAisle = items.reduce<Record<string, ShoppingItem[]>>((acc, item) => {
+  const byAisle = sortForShopping(items).reduce<Record<string, ShoppingItem[]>>((acc, item) => {
     (acc[item.category] ??= []).push(item);
     return acc;
   }, {});
 
+  const setStatus = (id: number, status: ShoppingItem['status']) =>
+    list.set((prev) => (prev ?? []).map((i) => (i.id === id ? { ...i, status } : i)));
+
   async function tick(item: ShoppingItem) {
-    // Optimistic: the row leaves the open list immediately. A tick that waits
-    // for the network reads as a dead button on supermarket wifi, and gets
-    // tapped again.
-    list.set((prev) => (prev ?? []).filter((i) => i.id !== item.id));
+    setStatus(item.id, 'bought');
     try {
       const result = await api.post<{ stocked: boolean }>(`/shopping/items/${item.id}/buy`);
-      bought.reload();
-      if (result.stocked) toast.show(`${item.name} — נוסף למזווה`);
+      toast.show(
+        result.stocked ? `${item.name} — נכנס למזווה` : `${item.name} — סומן`,
+        { undo: () => void untick(item) },
+      );
     } catch (err) {
-      list.reload();
-      toast.show(err instanceof Error ? err.message : 'לא הצלחנו לסמן', 'bad');
+      setStatus(item.id, 'open');
+      toast.show(err instanceof Error ? err.message : 'לא הצלחנו לסמן', { tone: 'bad' });
     }
   }
 
   async function untick(item: ShoppingItem) {
-    bought.set((prev) => (prev ?? []).filter((i) => i.id !== item.id));
+    setStatus(item.id, 'open');
     try {
       await api.post(`/shopping/items/${item.id}/unbuy`);
-      list.reload();
     } catch {
-      bought.reload();
+      list.reload();
     }
   }
 
@@ -63,89 +82,107 @@ export function ShoppingScreen() {
     <>
       <TopBar
         title="רשימת קניות"
-        subtitle={items.length ? `${items.length} פריטים` : 'הרשימה ריקה'}
-        action={boughtItems.length > 0 ? (
+        subtitle={open.length ? `${open.length} עוד לא נקנו` : items.length ? 'הכול בסל' : 'הרשימה ריקה'}
+        action={bought.length > 0 ? (
           <button className="btn btn-sm btn-primary" onClick={() => setCheckingOut(true)}>
-            סיום ({boughtItems.length})
+            סיום ({bought.length})
           </button>
         ) : null}
       />
 
       <div className="page">
-        {list.loading && !list.data && <Spinner />}
+        {list.loading && !list.data && <Loading />}
         {list.error && <ErrorNote message={list.error} onRetry={list.reload} />}
 
-        {!list.loading && items.length === 0 && boughtItems.length === 0 && (
+        {!list.loading && items.length === 0 && (
           <Empty
-            glyph="🛒"
-            title="אין מה לקנות"
-            hint="פריטים ייכנסו לכאן לבד כשמשהו במזווה יירד מתחת למינימום."
-            action={<button className="btn btn-primary" onClick={() => setAdding(true)}>הוספת פריט</button>}
+            headline="אין מה לקנות"
+            hint="פריטים ייכנסו לכאן לבד ברגע שמשהו במזווה יירד מתחת לכמות המינימלית שהגדרתם לו."
+            action={<button className="btn" onClick={() => setAdding(true)}>הוספת פריט</button>}
           />
         )}
 
         {Object.entries(byAisle).map(([aisle, aisleItems]) => (
           <section className="section" key={aisle}>
-            <h2>{aisle}</h2>
-            <div className="card">
-              <div className="rows">
-                {aisleItems.map((item) => (
-                  <div className="row" key={item.id}>
-                    <button
-                      className="btn btn-quiet"
-                      onClick={() => void tick(item)}
-                      aria-label={`סמנו ${item.name} כנקנה`}
-                      style={{ fontSize: 22, minWidth: 34, padding: 0 }}
-                    >
-                      ⬜
-                    </button>
-                    <div className="grow">
-                      <div className="title">{item.name}</div>
-                      <div className="meta">
-                        <span className="num">{item.qty}</span> {item.unit}
-                        {item.source === 'auto_min_stock' && <> · <span className="pill warn">נגמר במזווה</span></>}
-                        {item.note && <> · {item.note}</>}
-                      </div>
-                    </div>
-                    <button className="btn btn-quiet muted" onClick={() => void remove(item)} aria-label={`הסרת ${item.name}`}>✕</button>
-                  </div>
-                ))}
-              </div>
+            <h2>
+              {aisle} <span className="count n">{aisleItems.filter((i) => i.status === 'open').length}</span>
+            </h2>
+            <div className="rows">
+              {aisleItems.map((item) => (
+                <Row
+                  key={item.id}
+                  item={item}
+                  onToggle={() => void (item.status === 'open' ? tick(item) : untick(item))}
+                  onRemove={() => void remove(item)}
+                />
+              ))}
             </div>
           </section>
         ))}
 
-        {boughtItems.length > 0 && (
-          <section className="section">
-            <h2>בסל ({boughtItems.length})</h2>
-            <div className="card">
-              <div className="rows">
-                {boughtItems.map((item) => (
-                  <div className="row" key={item.id} style={{ opacity: .6 }}>
-                    <button className="btn btn-quiet" onClick={() => void untick(item)} aria-label={`החזרת ${item.name} לרשימה`} style={{ fontSize: 22, minWidth: 34, padding: 0 }}>✅</button>
-                    <div className="grow">
-                      <div className="title" style={{ textDecoration: 'line-through' }}>{item.name}</div>
-                      <div className="meta"><span className="num">{item.qty}</span> {item.unit}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </section>
+        {items.length > 0 && (
+          <div style={{ marginTop: 'var(--s6)' }}>
+            <button className="btn btn-block" onClick={() => setAdding(true)}>
+              <Icon name="plus" size={18} /> הוספת פריט
+            </button>
+          </div>
         )}
       </div>
-
-      <button className="fab" onClick={() => setAdding(true)} aria-label="הוספת פריט">+</button>
 
       {adding && <AddItemSheet onClose={() => setAdding(false)} onAdded={() => { setAdding(false); list.reload(); }} />}
       {checkingOut && (
         <CheckoutSheet
-          count={boughtItems.length}
+          count={bought.length}
           onClose={() => setCheckingOut(false)}
-          onDone={() => { setCheckingOut(false); bought.reload(); list.reload(); toast.show('הקנייה נסגרה'); }}
+          onDone={() => { setCheckingOut(false); list.reload(); toast.show('הקנייה נסגרה'); }}
         />
       )}
     </>
+  );
+}
+
+/**
+ * One line of the list.
+ *
+ * The whole row is the tick target — 64px tall and full width — because the
+ * alternative is a 24px checkbox aimed at while walking. The mark sits in the
+ * right-hand margin where every mark in this app sits, and the quantity sits
+ * at the left end where every number does.
+ */
+function Row({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () => void; onRemove: () => void }) {
+  const done = item.status === 'bought';
+  return (
+    <div className={`row ${item.source === 'auto_min_stock' && !done ? 'by-system' : ''}`}>
+      <button
+        onClick={onToggle}
+        aria-pressed={done}
+        aria-label={done ? `החזרת ${item.name} לרשימה` : `סימון ${item.name} כנקנה`}
+        style={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: 'var(--s3)',
+          minHeight: 'var(--row-h)', minWidth: 0,
+        }}
+      >
+        <span className="margin-col" style={{ color: done ? 'var(--red)' : 'var(--ink)' }}>
+          <Icon name={done ? 'box-ticked' : 'box'} size={22} />
+        </span>
+        <span className="grow">
+          <span className={`title ${done ? 'struck' : ''}`} style={{ display: 'block' }}>{item.name}</span>
+          <span className="meta">
+            {item.source === 'auto_min_stock' && !done && <span className="mark mark-blue">נגמר במזווה · </span>}
+            {item.note}
+          </span>
+        </span>
+        <span className="n" style={{ fontSize: 20, fontWeight: 500, opacity: done ? .4 : 1 }}>
+          {item.qty}
+        </span>
+        <span className="meta" style={{ opacity: done ? .4 : 1 }}>{item.unit}</span>
+      </button>
+      {!done && (
+        <button className="btn btn-quiet" onClick={onRemove} aria-label={`הסרת ${item.name} מהרשימה`}>
+          <Icon name="close" size={16} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -155,7 +192,7 @@ function AddItemSheet({ onClose, onAdded }: { onClose: () => void; onAdded: () =
   const [note, setNote] = useState('');
 
   return (
-    <Sheet title="הוספת פריט" onClose={onClose}>
+    <Sheet title="מה צריך" onClose={onClose}>
       <AsyncForm
         submitLabel="הוספה"
         disabled={!name.trim()}
@@ -164,34 +201,26 @@ function AddItemSheet({ onClose, onAdded }: { onClose: () => void; onAdded: () =
           onAdded();
         }}
       >
-        <Field label="מה צריך">
-          {/* autoFocus is right here and almost nowhere else: the sheet was
-              opened by pressing "+", so typing is unambiguously the next step. */}
-          <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="חלב, נייר טואלט…" />
+        <Field label="פריט">
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="חלב" />
         </Field>
         <div className="row-2">
-          <Field label="כמה">
-            <input className="input" type="number" inputMode="decimal" min="0.1" step="0.5" value={qty} onChange={(e) => setQty(e.target.value)} />
+          <Field label="כמות">
+            <input className="input" type="number" inputMode="decimal" min="0.1" step="1" value={qty} onChange={(e) => setQty(e.target.value)} />
           </Field>
           <Field label="הערה">
-            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="3% / גדול" />
+            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="3%" />
           </Field>
         </div>
-        <p className="muted" style={{ fontSize: 13, marginBottom: 14 }}>
-          אם המוצר מוכר לנו במזווה, סימון «נקנה» יכניס אותו למלאי לבד.
+        <p className="meta" style={{ marginBottom: 'var(--s4)' }}>
+          מוצר שמוכר לנו במזווה — סימון «נקנה» יכניס אותו למלאי מעצמו.
         </p>
       </AsyncForm>
     </Sheet>
   );
 }
 
-/**
- * Closing a trip: the basket empties, and one line lands in the budget.
- *
- * One transaction for the whole run, not one per item. ₪412 in the grocery
- * envelope is a number somebody reads; forty lines of ₪3.90 is a more precise
- * budget that nobody ever opens.
- */
+/** One trip closes to one line in the budget. Forty lines of ₪3.90 is a more precise budget that nobody reads. */
 function CheckoutSheet({ count, onClose, onDone }: { count: number; onClose: () => void; onDone: () => void }) {
   const { user } = useSession();
   const accounts = useAsync(() => api.get<Account[]>('/money/accounts'));
@@ -205,9 +234,9 @@ function CheckoutSheet({ count, onClose, onDone }: { count: number; onClose: () 
   const grocery = spending.find((c) => c.name.includes('סופר'));
 
   return (
-    <Sheet title={`סיום קנייה — ${count} פריטים`} onClose={onClose}>
+    <Sheet title={`סגירת קנייה · ${count} פריטים`} onClose={onClose}>
       <AsyncForm
-        submitLabel={total ? 'סגירה ורישום בתקציב' : 'סגירה בלי לרשום'}
+        submitLabel={total ? 'סגירה ורישום בתקציב' : 'סגירה בלי רישום'}
         onSubmit={async () => {
           await api.post('/shopping/checkout', {
             total: total ? Number(total) : undefined,
@@ -219,8 +248,8 @@ function CheckoutSheet({ count, onClose, onDone }: { count: number; onClose: () 
           onDone();
         }}
       >
-        <Field label="כמה שילמנו (אפשר לדלג)">
-          <input className="input" type="number" inputMode="decimal" min="0" step="0.01" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="412.90" />
+        <Field label="כמה שילמנו · ₪">
+          <input className="input" type="number" inputMode="decimal" min="0" step="0.01" value={total} onChange={(e) => setTotal(e.target.value)} placeholder="0" autoFocus />
         </Field>
         {total && (
           <>
@@ -228,18 +257,23 @@ function CheckoutSheet({ count, onClose, onDone }: { count: number; onClose: () 
               <input className="input" value={payee} onChange={(e) => setPayee(e.target.value)} placeholder="שופרסל" />
             </Field>
             <div className="row-2">
-              <Field label="מאיזה חשבון">
+              <Field label="מחשבון">
                 <select className="select" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
                   {(accounts.data ?? []).filter((a) => !a.archived_at).map((a) => (
                     <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
                 </select>
               </Field>
-              <Field label="לאיזו קטגוריה">
+              <Field label="לקטגוריה">
                 <select className="select" value={categoryId || grocery?.id || ''} onChange={(e) => setCategoryId(e.target.value)}>
                   {spending.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </Field>
+            </div>
+            <hr className="rule-2" style={{ margin: 'var(--s4) 0' }} />
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--s4)' }}>
+              <span className="label">סך הקנייה</span>
+              <span className="n amount" style={{ fontSize: 20 }}>{formatILS(Number(total) || 0, { agorot: true })}</span>
             </div>
           </>
         )}
