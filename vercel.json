@@ -4,10 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/guide", "destination": "/guide.html" },
-    { "source": "/api/admin/:path*", "destination": "/api/admin/[...path]" },
-    { "source": "/api/money/:path*", "destination": "/api/money/[...path]" },
-    { "source": "/api/pantry/:path*", "destination": "/api/pantry/[...path]" },
-    { "source": "/api/shopping/:path*", "destination": "/api/shopping/[...path]" },
+    { "source": "/api/admin/(.*)", "destination": "/api/admin/[...path]?path=$1" },
+    { "source": "/api/money/(.*)", "destination": "/api/money/[...path]?path=$1" },
+    { "source": "/api/pantry/(.*)", "destination": "/api/pantry/[...path]?path=$1" },
+    { "source": "/api/shopping/(.*)", "destination": "/api/shopping/[...path]?path=$1" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
