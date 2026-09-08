@@ -25,21 +25,31 @@ export interface RequestShape {
  * directory the function is mounted under, keep the rest. Segments are decoded,
  * because `/api/admin/users/a%40b.com` has to arrive as an email address.
  */
-const MODULES = ['admin', 'auth', 'cron', 'money', 'pantry', 'shopping'];
+const MODULES = new Set(['admin', 'auth', 'cron', 'money', 'pantry', 'shopping']);
 
 export function segmentsOf(req: RequestShape): string[] {
+  let rawSegments: string[] = [];
+
   const pathname = (req.url ?? '').split('?')[0] ?? '';
-  const all = pathname.split('/').filter(Boolean).map(decodeSegment);
+  if (pathname && pathname !== '/') {
+    rawSegments = pathname.split('/').filter(Boolean).map(decodeSegment);
+  } else if (req.query?.['path']) {
+    const raw = req.query['path'];
+    if (Array.isArray(raw)) {
+      rawSegments = raw.filter(Boolean).map(decodeSegment);
+    } else if (typeof raw === 'string' && raw) {
+      rawSegments = raw.split('/').filter(Boolean).map(decodeSegment);
+    }
+  }
 
-  if (all[0] === 'api' && MODULES.includes(all[1] ?? '')) return all.slice(2);
-  if (all[0] === 'api') return all.slice(1);
-  if (all[0] && MODULES.includes(all[0])) return all.slice(1);
+  if (rawSegments[0] === 'api') {
+    rawSegments.shift();
+  }
+  if (rawSegments[0] && MODULES.has(rawSegments[0])) {
+    rawSegments.shift();
+  }
 
-  // A runtime that hands us an already-stripped path, or none at all.
-  const raw = req.query?.['path'];
-  if (Array.isArray(raw)) return raw.filter(Boolean);
-  if (typeof raw === 'string' && raw) return raw.split('/').filter(Boolean);
-  return all;
+  return rawSegments;
 }
 
 function decodeSegment(segment: string): string {
