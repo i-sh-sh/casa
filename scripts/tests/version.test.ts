@@ -48,6 +48,27 @@ test('package.json and public/version.json versions must be identical', () => {
   assert.equal(pkg.version, ver.version, 'package.json and version.json must agree');
 });
 
+test('package-lock.json carries the same version, in both places it appears', () => {
+  // Vercel installs with `npm ci`, which refuses to run at all when the lock
+  // disagrees with package.json. A release that forgets the lock does not ship
+  // a stale build — it fails the *next* deploy during install, with an error
+  // that names neither the release nor the version.
+  const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'));
+  const lock = JSON.parse(readFileSync(resolve(root, 'package-lock.json'), 'utf-8'));
+  assert.equal(lock.version, pkg.version, 'package-lock.json root version is behind');
+  assert.equal(lock.packages?.['']?.version, pkg.version, 'package-lock.json packages[""] version is behind');
+});
+
+test('parseVersion returns a fixed triple, so destructuring it typechecks', () => {
+  // Under noUncheckedIndexedAccess a `number[]` return makes every caller that
+  // writes `const [major, minor, patch] = parsed` fail to compile — which is
+  // exactly how the release tool stopped typechecking.
+  const parsed = parseVersion('1.2.3');
+  assert.ok(parsed);
+  const [major, minor, patch] = parsed;
+  assert.deepEqual([major, minor, patch], [1, 2, 3]);
+});
+
 test('public/sw.js CACHE_NAME contains the version from package.json', () => {
   const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'));
   const sw = readFileSync(resolve(root, 'public/sw.js'), 'utf-8');

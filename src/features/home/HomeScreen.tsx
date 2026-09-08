@@ -5,7 +5,7 @@ import { useSession } from '../../lib/session.js';
 import { ErrorNote, Loading, useAsync } from '../../ui/kit.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS, monthKey } from '@shared/money.js';
-import type { BalanceBetweenUs, BudgetMonth, Product, RecurringBill, ShoppingItem } from '@shared/types.js';
+import type { BudgetMonth, Product, RecurringBill, ShoppingItem } from '@shared/types.js';
 
 function greeting(): string {
   const hour = new Date().getHours();

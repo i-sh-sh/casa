@@ -7,6 +7,7 @@ import { TopBar } from '../../ui/TopBar.js';
 import { formatILS } from '@shared/money.js';
 import { useVersion } from '../../lib/version.js';
 import { shouldUpdate } from '@shared/version.js';
+import type { Account, User } from '@shared/types.js';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'בעל הבית', member: 'שותף', viewer: 'צופה', pending: 'ממתין לאישור',

@@ -115,8 +115,24 @@ Usage:
   }
 
   // 1. package.json
-  writeJson('package.json', { ...readJson('package.json'), version: nextVersion });
+  writeJson('package.json', { ...readJson<Record<string, unknown>>('package.json'), version: nextVersion });
   console.log(`✔ Updated package.json`);
+
+  // 1b. package-lock.json — not optional, and not cosmetic.
+  //
+  // Vercel installs with `npm ci`, which refuses to run at all when the lock
+  // file's version disagrees with package.json. Leaving the lock behind does
+  // not produce a stale build; it produces no build, with the deploy failing
+  // during install — on the release after this one, so the cause looks
+  // unrelated. The version appears twice: at the root and in the "" package.
+  writeJson('package-lock.json', (() => {
+    const lock = readJson<Record<string, unknown>>('package-lock.json');
+    const packages = lock['packages'] as Record<string, Record<string, unknown>> | undefined;
+    const root = packages?.[''];
+    if (root) root['version'] = nextVersion;
+    return { ...lock, version: nextVersion };
+  })());
+  console.log(`✔ Updated package-lock.json`);
 
   // 2. public/version.json
   writeJson('public/version.json', manifest);

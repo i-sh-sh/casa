@@ -6,14 +6,22 @@ export interface VersionManifest {
   released_at?: string;
 }
 
-/** Parses a semver string like "0.1.0" or "1.10.2" into an array of numbers. */
-export function parseVersion(v: string | null | undefined): number[] | null {
+/**
+ * Parses a semver string like "0.1.0" or "1.10.2" into its three numbers.
+ *
+ * The return type is a fixed triple rather than `number[]`, because this
+ * project compiles with `noUncheckedIndexedAccess`: indexing a plain array
+ * yields `number | undefined`, and every caller that destructures the result
+ * then fails to typecheck. The length is already guaranteed two lines below —
+ * the type may as well say so.
+ */
+export function parseVersion(v: string | null | undefined): [number, number, number] | null {
   if (!v || typeof v !== 'string') return null;
   const parts = v.trim().split('.').map((p) => Number(p));
   if (parts.length !== 3 || parts.some((n) => Number.isNaN(n) || n < 0)) {
     return null;
   }
-  return parts;
+  return parts as [number, number, number];
 }
 
 /**
