@@ -200,7 +200,7 @@ function MembersSection({ currentEmail }: { currentEmail: string }) {
 
   async function setRole(email: string, role: string) {
     try {
-      await api.patch(`/admin/users/${encodeURIComponent(email)}`, { role });
+      await api.patch('/admin/users', { email, role });
       users.reload();
       toast.show('עודכן');
     } catch (err) {

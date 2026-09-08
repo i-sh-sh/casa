@@ -96,7 +96,7 @@ async function listUsers() {
 }
 
 async function setUserRole(ctx: Ctx) {
-  const email = str(ctx.params['email'], 'email', { max: 200 }).toLowerCase();
+  const email = str(ctx.body['email'] ?? ctx.params['email'], 'email', { max: 200 }).toLowerCase();
   const role = oneOf(ctx.body['role'], 'תפקיד', ROLES) as Role;
 
   if (email === ctx.user.email && role !== 'owner') {
@@ -119,6 +119,7 @@ export default router([
   { method: 'POST', path: 'migrate', role: 'owner', handle: migrate },
   { method: 'POST', path: 'seed', role: 'owner', handle: seed },
   { method: 'GET', path: 'users', role: 'owner', handle: listUsers },
+  { method: 'PATCH', path: 'users', role: 'owner', handle: setUserRole },
   { method: 'PATCH', path: 'users/:email', role: 'owner', handle: setUserRole },
   {
     method: 'GET', path: 'health', role: 'viewer',
