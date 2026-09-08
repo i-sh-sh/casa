@@ -55,7 +55,12 @@ test('no emoji anywhere in the interface or the messages it sends', () => {
   const pictograph = /\p{Extended_Pictographic}/u;
   const offenders: string[] = [];
 
-  for (const file of [...sourceFiles('src', ['.tsx', '.ts', '.css']), ...sourceFiles('api', ['.ts'])]) {
+  const files = [
+    ...sourceFiles('src', ['.tsx', '.ts', '.css']),
+    ...sourceFiles('api', ['.ts']),
+    join(root, 'public/guide.html'),
+  ];
+  for (const file of files) {
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       const found = [...line].filter((c) => pictograph.test(c));
       if (found.length) offenders.push(`${relative(root, file)}:${i + 1}  ${found.join(' ')}`);
@@ -86,6 +91,24 @@ test('none of the default palettes appear in the stylesheet', () => {
   const source = css().toLowerCase();
   for (const [hex, name] of Object.entries(BANNED)) {
     assert.ok(!source.includes(hex), `${hex} (${name}) is banned — see docs/DESIGN.md §9`);
+  }
+});
+
+test('the guide is painted in the app\'s own palette, not a copy that drifted', () => {
+  // public/guide.html mirrors the tokens instead of importing them, because
+  // Vite hashes the real stylesheet into /assets/index-<hash>.css and a static
+  // page cannot name that file. Mirroring is a real cost — two places to
+  // change a colour — and this is what stops the second place going stale.
+  const guide = declarations(read('public/guide.html'));
+  const app = css();
+  for (const token of ['--paper', '--ink', '--red', '--blue', '--rule']) {
+    const inApp = new RegExp(`${token}:\\s*(#[0-9a-f]{6})`, 'i').exec(app);
+    const inGuide = new RegExp(`${token}:\\s*(#[0-9a-f]{6})`, 'i').exec(guide);
+    assert.ok(inApp && inGuide, `${token} must be defined in both`);
+    assert.equal(
+      inGuide[1]!.toLowerCase(), inApp[1]!.toLowerCase(),
+      `${token} has drifted between src/styles.css and public/guide.html`,
+    );
   }
 });
 
@@ -161,6 +184,25 @@ test('touch targets keep their one-handed minimums', () => {
     const declared = /min-height:\s*(\d+)px/.exec(body ?? '');
     if (!declared) continue; // inherits the base rule
     assert.ok(Number(declared[1]) >= 44, `.${name} declares a ${declared[1]}px target — the floor is 44px`);
+  }
+});
+
+test('the money column is a fixed width, not a floor', () => {
+  // The design's central claim is that every amount hangs on one invisible
+  // vertical. `min-width` cannot deliver that: it sets a floor, so a row
+  // holding ₪43,200 grows its box past a row holding ₪1,200 and their right
+  // edges part company.
+  //
+  // This survived a rendered measurement because every amount on screen at the
+  // time was the same order of magnitude. It only appeared once a projection
+  // put ₪1,200 directly above ₪43,200 — so the rule is asserted here rather
+  // than left to the next screenshot that happens to mix magnitudes.
+  for (const [file, selector] of [['src/styles.css', '.amount'], ['public/guide.html', '.amt']] as const) {
+    const block = new RegExp(`\\${selector}\\s*\\{([^}]*)\\}`).exec(declarations(read(file)));
+    assert.ok(block, `${selector} must be defined in ${file}`);
+    const body = block[1] ?? '';
+    assert.ok(/width:\s*[\d.]+em/.test(body), `${selector} in ${file} needs a fixed width`);
+    assert.ok(!/min-width:/.test(body), `${selector} in ${file} uses min-width — a floor does not align a column`);
   }
 });
 

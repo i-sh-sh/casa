@@ -140,10 +140,19 @@ a { color: inherit; }
   letter-spacing: -0.01em;
 }
 
-/* The money column: fixed box at the row's left end, right-aligned inside it.
-   Every units digit in the app lands on one invisible vertical. */
+/* The money column: a fixed box at the row's left end, right-aligned inside it.
+   Every units digit in the app lands on one invisible vertical.
+
+   `width`, not `min-width`. A minimum only sets a floor: the moment one row
+   holds ₪43,200 and the next holds ₪1,200, the long box grows, the short one
+   stays at the floor, and their right edges — the alignment this whole design
+   claims — stop agreeing. The fault stayed invisible while every amount on
+   screen was the same order of magnitude, which is exactly how it survived a
+   measured check. `flex: none` keeps the column from being squeezed by a long
+   category name. */
 .amount {
-  min-width: 5.5em;
+  width: 6.2em;
+  flex: none;
   text-align: right;
   white-space: nowrap;
   font-weight: 500;

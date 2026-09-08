@@ -3,6 +3,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "rewrites": [
+    { "source": "/guide", "destination": "/guide.html" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [

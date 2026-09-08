@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#f2ede3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#141310" media="(prefers-color-scheme: dark)">
+<title>קאסה — המדריך</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alef:wght@400;700&family=Frank+Ruhl+Libre:wght@900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!--
+  קאסה — המדריך
+  ═════════════
+
+  A film that is not a film. There is no video file here, nothing was
+  recorded and nothing is generated at run time: every frame is the app's own
+  markup and the app's own tokens, advanced on a timeline. That makes it
+  weightless to ship, correct by construction — it cannot drift from a design
+  it is literally made of — and editable by changing a sentence rather than
+  re-rendering ten minutes of footage.
+
+  The tokens below are copied from src/styles.css rather than imported,
+  because Vite hashes the real stylesheet into /assets/index-<hash>.css and a
+  static page cannot name that file. Copying is a real cost — two places to
+  change a colour — so it is kept to the subset this page actually uses, and
+  a test asserts the palette here still matches the app's.
+
+  One rule is deliberately broken: the app caps motion at 200ms, because
+  motion there is paid for on every one of twenty daily openings. This page is
+  watched once. Its transitions run to 600ms, which is what lets a scene read
+  as a scene rather than a flicker.
+-->
+
+<style>
+/* ── Tokens, mirrored from src/styles.css ─────────────────────────────── */
+:root{
+  color-scheme:light;
+  --paper:#f2ede3; --paper-2:#eae3d6; --ink:#1a1a17; --ink-2:#55503f; --ink-3:#837c68;
+  --rule:#cdc6b6; --rule-blue:#a9b4bd; --red:#a8321e; --red-wash:#e9ddd2;
+  --blue:#3a5c7a; --blue-wash:#e2e4e2;
+  --f-display:'Frank Ruhl Libre',serif; --f-text:'Alef',sans-serif;
+  --f-num:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){
+  color-scheme:dark;
+  --paper:#141310; --paper-2:#1e1c17; --ink:#e8e2d4; --ink-2:#a49b86; --ink-3:#7a725f;
+  --rule:#35322a; --rule-blue:#3f4a52; --red:#d4614a; --red-wash:#2b1d18;
+  --blue:#7e9bb5; --blue-wash:#1b2126;
+}}
+*,*::before,*::after{box-sizing:border-box;border-radius:0!important;box-shadow:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-text);font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased}
+h1,h2,h3,p{margin:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+.n{font-family:var(--f-num);font-variant-numeric:tabular-nums lining-nums;font-size:1.06em;direction:ltr;unicode-bidi:isolate;letter-spacing:-.01em}
+.label{font-size:12px;font-weight:700;letter-spacing:.06em;color:var(--ink-2)}
+.mark-red{color:var(--red);font-weight:700;font-size:12px;letter-spacing:.04em}
+.mark-blue{color:var(--blue);font-weight:700;font-size:12px;letter-spacing:.04em}
+
+/* ── Shell ────────────────────────────────────────────────────────────── */
+.film{min-height:100dvh;display:flex;flex-direction:column;padding-bottom:76px}
+.bar{position:fixed;top:0;inset-inline:0;height:3px;background:var(--rule);z-index:40}
+.bar>i{display:block;height:100%;background:var(--ink);width:0}
+.top{display:flex;align-items:baseline;gap:12px;padding:20px 20px 0;max-width:1080px;margin-inline:auto;width:100%}
+.top .wordmark{font-family:var(--f-display);font-weight:900;font-size:22px;letter-spacing:-.02em}
+.top .grow{flex:1}
+
+.stage{flex:1;display:grid;gap:28px;align-content:center;padding:24px 20px;max-width:1080px;margin-inline:auto;width:100%}
+@media (min-width:900px){.stage{grid-template-columns:340px 1fr;align-items:center;gap:56px}}
+@media (max-width:899px){
+  .phone{min-height:0;max-width:100%}
+  .say h2{font-size:25px;padding-bottom:9px;margin-bottom:11px}
+  .say p{font-size:15px}
+  .stage{gap:20px;padding:16px}
+}
+
+.scene{display:none}
+.scene.on{display:contents}
+
+/* ── The spoken half ──────────────────────────────────────────────────── */
+.say .idx{font-family:var(--f-num);font-size:12px;color:var(--ink-3);letter-spacing:.08em}
+.say h2{font-family:var(--f-display);font-weight:900;font-size:clamp(26px,6vw,40px);line-height:1.12;letter-spacing:-.015em;margin:6px 0 14px;border-bottom:1px solid var(--ink);padding-bottom:12px}
+.say p{font-size:17px;max-width:46ch;color:var(--ink-2)}
+.say p+p{margin-top:12px}
+.say b{color:var(--ink);font-weight:700}
+.say .why{margin-top:16px;border-inline-start:3px solid var(--blue);padding-inline-start:12px;font-size:15px;color:var(--ink-2)}
+
+/* ── The phone ────────────────────────────────────────────────────────── */
+.phone{border:3px solid var(--ink);background:var(--paper);padding:12px 12px 0;max-width:340px;width:100%;margin-inline:auto;min-height:440px;display:flex;flex-direction:column}
+.phone .head{font-family:var(--f-display);font-weight:900;font-size:20px;letter-spacing:-.015em;line-height:1.2}
+.phone .sub{font-size:12px;color:var(--ink-3);margin-bottom:10px}
+.phone .body{flex:1}
+.rule{border:0;border-top:1px solid var(--rule);margin:0}
+.rule2{border:0;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);height:5px;margin:6px 0}
+.sect{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--ink-2);border-bottom:1px solid var(--ink);padding-bottom:5px;margin-top:16px}
+.row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--rule);min-height:48px}
+.row:last-child{border-bottom:0}
+.row .g{flex:1;min-width:0}
+/* display:block is load-bearing. These are <span>s inside a flex item, so
+   without it the name and its explanation run together on one line —
+   "כסףתקציב מעטפות" — which reads as a rendering fault and appeared on
+   every row of every scene until a phone-width render caught it. */
+.row .t{display:block;font-size:15px;line-height:1.3}
+.row .m{display:block;font-size:12px;color:var(--ink-2);line-height:1.45}
+.amt{font-family:var(--f-num);font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate;width:6.2em;flex:none;text-align:right;font-weight:500}
+.amt.over{color:var(--red)}
+.hero{padding:12px 0 10px;border-bottom:1px solid var(--ink)}
+.hero .fig{font-family:var(--f-num);font-variant-numeric:proportional-nums lining-nums;font-size:34px;font-weight:600;line-height:1;letter-spacing:-.02em;direction:ltr;unicode-bidi:isolate;margin-top:6px}
+.hero .fig.over{color:var(--red)}
+.meter{display:block;height:4px;background:var(--rule);margin:5px 0 4px;max-width:150px}
+.meter>i{display:block;height:100%;background:var(--ink)}
+.meter.over>i{background:var(--red)}
+.mini{border:1px solid var(--ink);padding:8px 10px;font-size:13px;text-align:center;margin-top:10px}
+.warn{border-top:1px solid var(--red);border-bottom:1px solid var(--red);background:var(--red-wash);color:var(--red);padding:8px 10px;font-size:13px;margin-top:10px}
+.bysys{border-inline-start:3px solid var(--blue);padding-inline-start:9px}
+.struck{text-decoration:line-through;text-decoration-color:var(--red);text-decoration-thickness:2px;color:var(--ink-3)}
+.nav{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--ink);margin:10px -12px 0}
+.nav span{padding:8px 0;text-align:center;font-size:10px;color:var(--ink-3);border-inline-start:1px solid var(--rule)}
+.nav span:first-child{border-inline-start:0}
+.nav span.cur{color:var(--ink);font-weight:700;box-shadow:none;position:relative}
+.nav span.cur::before{content:'';position:absolute;top:0;inset-inline:0;height:3px;background:var(--ink)}
+svg{display:block;margin:0 auto 2px}
+
+/* ── Motion ───────────────────────────────────────────────────────────── */
+/* Staggered by --i so a scene assembles the way a page is read: the thing
+   being explained lands last, after the frame it lands in. */
+.scene.on .say,.scene.on .phone{animation:enter .6s cubic-bezier(.2,.7,.3,1) both}
+.scene.on .phone{animation-delay:.08s}
+.scene.on .step{animation:enter .5s cubic-bezier(.2,.7,.3,1) both;animation-delay:calc(.22s + var(--i,0)*.14s)}
+.scene.on .pulse{animation:enter .5s cubic-bezier(.2,.7,.3,1) both,glow 1.6s 1.1s ease-in-out 2;animation-delay:calc(.22s + var(--i,0)*.14s),1.1s}
+@keyframes enter{from{opacity:0;transform:translateY(10px)}}
+@keyframes glow{50%{background:var(--paper-2)}}
+@media (prefers-reduced-motion:reduce){.scene.on *{animation:none!important}}
+
+/* ── Controls ─────────────────────────────────────────────────────────── */
+.controls{position:fixed;inset-inline:0;bottom:0;z-index:40;background:var(--paper);border-top:1px solid var(--ink);display:flex;align-items:center;gap:6px;padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));max-width:1080px;margin-inline:auto}
+.controls button{min-height:44px;min-width:44px;padding:0 12px;border:1px solid var(--ink);font-size:14px}
+.controls button[disabled]{opacity:.35}
+.controls .spacer{flex:1}
+.controls .count{font-family:var(--f-num);font-size:13px;color:var(--ink-2);direction:ltr}
+.dots{display:flex;gap:3px;flex-wrap:wrap;max-width:44%}
+.dots i{width:14px;height:4px;background:var(--rule);cursor:pointer;display:block}
+.dots i.done{background:var(--ink-3)}
+.dots i.cur{background:var(--ink)}
+@media (max-width:560px){.dots{display:none}}
+</style>
+</head>
+
+<body>
+<div class="bar"><i id="bar"></i></div>
+
+<div class="film">
+  <div class="top">
+    <div class="wordmark">קאסה</div>
+    <div class="grow"><span class="label">המדריך</span></div>
+    <span class="count n" id="clock">1 / 15</span>
+  </div>
+
+  <main class="stage" id="stage">
+
+  <!-- 01 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="9">
+    <div class="phone">
+      <div class="head">קאסה</div>
+      <div class="sub">פנקס אחד לבית אחד</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g"><span class="t">כסף</span><span class="m">תקציב מעטפות, תזרים, ומי חייב למי</span></span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">מזווה</span><span class="m">מה יש בבית, ומה עומד להיגמר</span></span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">קניות</span><span class="m">רשימה שכותבת את עצמה</span></span></div>
+      </div>
+      <div class="nav"><span class="cur">הבית</span><span>קניות</span><span>מזווה</span><span>תקציב</span><span>הגדרות</span></div>
+    </div>
+    <div class="say">
+      <div class="idx">01</div>
+      <h2>שלוש מערכות, פנקס אחד</h2>
+      <p>קאסה מנהלת את הכסף, את המזווה ואת רשימת הקניות — ו<b>מחברת ביניהם</b>. זה החיבור שעושה את ההבדל: כשנגמר החלב הוא נכנס לרשימה לבד, וכשקונים אותו הוא חוזר למזווה לבד.</p>
+      <div class="why">העיקרון שמנחה הכול: מערכת שדורשת עבודה כדי להישאר מעודכנת — לא תישאר מעודכנת.</div>
+    </div>
+  </section>
+
+  <!-- 02 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="8">
+    <div class="phone">
+      <div class="head">בוקר טוב</div>
+      <div class="sub">מה קורה בבית</div>
+      <div class="body">
+        <div class="hero step" style="--i:0">
+          <div class="label">תזרים החודש</div>
+          <div class="fig over">−₪1,200</div>
+          <div class="m" style="margin-top:6px">נכנס <span class="n">₪8,500</span> · הוצא <span class="n">₪9,700</span></div>
+        </div>
+        <div class="sect step" style="--i:1">לקנות <span class="n">4</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">חלב · לחם · ביצים · קפה</span><span class="mark-blue">2 מהם נגמרו במזווה</span></span></div>
+        <div class="sect step" style="--i:2;color:var(--red);border-bottom-color:var(--red)">להשתמש לפני שיתקלקל <span class="n">1</span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">קוטג׳ (2 ימים)</span></span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">02 · הבית</div>
+      <h2>מה צריך תשומת לב היום</h2>
+      <p>המסך הראשון מראה <b>רק דברים שיש עליהם פעולה</b>: משהו לקנות, משהו להשתמש בו לפני שיתקלקל, חשבון שמגיע, מישהו שצריך להחזיר לו.</p>
+      <p>סעיף שאין לו מה לומר — <b>פשוט לא מודפס</b>. וכשאין כלום, המסך אומר את זה במפורש במקום להציג לוח מחוונים ריק.</p>
+    </div>
+  </section>
+
+  <!-- 03 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="11">
+    <div class="phone">
+      <div class="head">תקציב</div>
+      <div class="sub">ספטמבר</div>
+      <div class="body">
+        <div class="hero step" style="--i:0">
+          <div class="label">תזרים חודשי</div>
+          <div class="fig over">−₪1,200</div>
+        </div>
+        <div class="sect step" style="--i:1;color:var(--red);border-bottom-color:var(--red)">אם שום דבר לא ישתנה</div>
+        <div class="row step" style="--i:1"><span class="g label">בחודש</span><span class="amt over">−₪1,200</span></div>
+        <div class="row step" style="--i:2"><span class="g label">בשנה</span><span class="amt over">−₪14,400</span></div>
+        <div class="row pulse" style="--i:3"><span class="g label">בשלוש שנים</span><span class="amt over">−₪43,200</span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">03 · תזרים</div>
+      <h2>אותו חיסור, אמור בקול</h2>
+      <p>הכנסות פחות הוצאות. כשהתוצאה שלילית, המערכת מכפילה אותה ב־12 וב־36 — כי על <b>₪1,200 חסרים בחודש</b> מושכים בכתפיים, ועל <b>₪43,200 בשלוש שנים</b> לא.</p>
+      <p>זו לא תחזית ולא מתיימרת להיות אחת. זה בדיוק אותו חיסור, אמור בקול.</p>
+      <div class="why">ההשלכה מחושבת <b>רק לגירעון</b>. להכפיל חודש טוב ב־36 ולהבטיח ₪43,200 חיסכון זו אותה אריתמטיקה בשימוש לא כן.</div>
+    </div>
+  </section>
+
+  <!-- 04 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="12">
+    <div class="phone">
+      <div class="head">איפה יש גמישות</div>
+      <div class="sub">הוקצה ₪</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g"><span class="t">קשיחות</span><span class="meter"><i style="width:38%"></i></span><span class="m">קבועות, או שקשה לשנות</span></span><span class="amt">3,570</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">גמישות</span><span class="meter"><i style="width:37%"></i></span><span class="m">חייבים לשלם משהו</span></span><span class="amt">3,500</span></div>
+        <div class="row pulse" style="--i:2"><span class="g"><span class="t">נזילות</span><span class="meter"><i style="width:16%"></i></span><span class="m">כאן באמת נחסך חודש</span></span><span class="amt">1,450</span></div>
+        <div class="row step" style="--i:3"><span class="g"><span class="t">לא צפויות</span><span class="meter"><i style="width:2%"></i></span></span><span class="amt">200</span></div>
+        <div class="warn step" style="--i:4">לבלת״מ מוקצים <span class="n">2%</span>. מומלץ <span class="n">5%</span> — חסרים <span class="n">₪260</span>.</div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">04 · הסולם</div>
+      <h2>לא «לצמצם» — <span dir="rtl">לדעת איפה</span></h2>
+      <p>כל קטגוריה מסווגת לפי <b>כמה שליטה יש לכם עליה</b>: קשיחה, גמישה, נזילה, או לא צפויה.</p>
+      <p>«לצמצם הוצאות» זו לא עצה. «מתוך ₪9,700 — ₪3,570 קשיחות ו־₪1,450 נזילות» זו כן, כי היא מצביעה על החלק שאפשר באמת להזיז.</p>
+      <div class="why">בלת״מ היא הקטגוריה שרוב התקציבים משמיטים, ולכן רוב התקציבים נשברים. חתונה, רופא שיניים, טלפון שנשבר — אף פעם לא אותו דבר, ואף פעם לא באמת הפתעה ש<i>משהו</i> קרה.</div>
+    </div>
+  </section>
+
+  <!-- 05 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="11">
+    <div class="phone">
+      <div class="head">קבועות</div>
+      <div class="sub">נשאר ₪</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g"><span class="t">ביטוח רכב</span><span class="meter"><i style="width:0%"></i></span><span class="m">הוצא <span class="n">0</span> מתוך <span class="n">250</span></span></span><span class="amt">750</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">ארנונה</span><span class="meter"><i style="width:62%"></i></span><span class="m">הוצא <span class="n">248</span> מתוך <span class="n">400</span></span></span><span class="amt">152</span></div>
+        <div class="row pulse" style="--i:2"><span class="g"><span class="t">חשמל</span><span class="meter over"><i style="width:100%"></i></span><span class="m">הוצא <span class="n">412</span> מתוך <span class="n">300</span> · <span class="mark-red">חריגה</span></span></span><span class="amt over">−112</span></div>
+        <hr class="rule2 step" style="--i:3">
+        <div class="row step" style="--i:3"><span class="g label">סך הקבוצה</span><span class="amt" style="font-weight:600">790</span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">05 · מעטפות</div>
+      <h2>כמה עוד מותר על זה</h2>
+      <p>לכל קטגוריה יש מעטפה. המספר הגדול בכל שורה הוא <b>כמה נשאר</b> — לא כמה הוצאתם. בנק כבר אומר לכם כמה הוצאתם; רק מעטפה אומרת כמה עוד מותר.</p>
+      <p><b>היתרות מתגלגלות בין חודשים.</b> ₪250 לביטוח רכב כל חודש הופכים ל־₪750 בחודש השלישי, וכשהחיוב השנתי מגיע הוא לא אסון — הוא התוכנית שעבדה.</p>
+      <div class="why">גם חריגה מתגלגלת. מעטפה במינוס נשארת במינוס עד שמעבירים אליה כסף — כי זה הדבר שבאמת צריך לקרות.</div>
+    </div>
+  </section>
+
+  <!-- 06 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">סופר</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g label">רמת מחויבות</span><span>גמישות</span></div>
+        <div class="row step" style="--i:0"><span class="g label">הוצא החודש</span><span class="amt">₪1,880</span></div>
+        <hr class="rule2 step" style="--i:1">
+        <div class="row step" style="--i:1"><span class="g label">זמין</span><span class="amt" style="font-size:20px;font-weight:600">₪120</span></div>
+        <div class="label step" style="--i:2;margin-top:14px">להקצות החודש · ₪</div>
+        <div class="row step" style="--i:2;border-bottom:1px solid var(--ink)"><span class="g n" style="font-size:20px">2,000</span></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <span class="mini pulse" style="--i:3;flex:1">בפועל · ₪1,940 <span class="m">(3 חודשים)</span></span>
+          <span class="mini step" style="--i:4;flex:1">היעד · ₪2,000</span>
+        </div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">06 · כמה להקצות</div>
+      <h2>מה זה עלה באמת</h2>
+      <p>יעד שהומצא מאפס הוא משאלה. לכן לצד «היעד» יש כפתור <b>«בפועל»</b> — הממוצע האמיתי של שלושת החודשים האחרונים, מחושב מהתנועות שכבר רשומות.</p>
+      <p>אם יש לכם רק חודשיים של מעקב, הוא יגיד <b>«חודשיים»</b> ולא יעמיד פנים שהוא שלושה.</p>
+    </div>
+  </section>
+
+  <!-- 07 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">תנועה חדשה</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g label">סכום · ₪</span><span class="n" style="font-size:22px">412</span></div>
+        <div class="row step" style="--i:1"><span class="g label">למי</span><span>שופרסל</span></div>
+        <div class="row step" style="--i:1"><span class="g label">קטגוריה</span><span>סופר</span></div>
+        <div class="row step" style="--i:2"><span class="g label">תאריך</span><span class="n">08/09</span></div>
+        <div class="row pulse" style="--i:3"><span class="g label">מי שילם</span><span>ישראל</span></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <span class="mini pulse" style="--i:4;flex:1;background:var(--ink);color:var(--paper)">משותף</span>
+          <span class="mini step" style="--i:4;flex:1">אישי</span>
+        </div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">07 · תנועות</div>
+      <h2>מי שילם, ועל חשבון מי</h2>
+      <p>לכל תנועה יש <b>«מי שילם»</b>, וזה לא בהכרח מי שרשם אותה. בלי השדה הזה יודעים כמה הבית הוציא ולא יודעים מי בחיסרון.</p>
+      <p><b>«משותף»</b> נכנס לאיזון בינינו. <b>«אישי»</b> לא נכנס אליו לעולם — מתנה שקניתם אחד לשני היא לא חוב.</p>
+    </div>
+  </section>
+
+  <!-- 08 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="9">
+    <div class="phone">
+      <div class="head">תנועות</div>
+      <div class="body">
+        <div class="hero step" style="--i:0">
+          <div class="label">איזון בינינו</div>
+          <div style="font-size:15px;margin-top:6px">נעה חייבת לישראל</div>
+          <div class="fig">₪240</div>
+        </div>
+        <div class="mini pulse" style="--i:1">סגירה</div>
+        <div class="sect step" style="--i:2">אחרי ההחזר</div>
+        <div class="row step" style="--i:2"><span class="g label">איזון בינינו</span><span>מסודרים</span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">08 · איזון</div>
+      <h2>מי חייב למי</h2>
+      <p>המערכת מחלקת כל הוצאה משותפת שווה בשווה ומשווה למי שבאמת שילם. התוצאה נאמרת <b>במשפט עם שני שמות</b>, אף פעם לא כמספר עם סימן שצריך לפענח.</p>
+      <p>«סגירה» רושמת החזר — והוא <b>לא נרשם כהוצאה חדשה</b>, רק מאפס את החוב.</p>
+    </div>
+  </section>
+
+  <!-- 09 ─────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="11">
+    <div class="phone">
+      <div class="head">מזווה</div>
+      <div class="sub">2 נגמרים</div>
+      <div class="body">
+        <div class="sect step" style="--i:0">חלב וביצים <span class="n">2</span></div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">חלב</span><span class="m">מינימום <span class="n">2</span> · <span class="mark-red">נגמר</span></span></span><span class="n" style="font-size:18px;font-weight:500">1</span><span class="m">ליטר</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">קוטג׳</span><span class="m">מינימום <span class="n">1</span> · <span class="mark-red">תוקף קרוב</span></span></span><span class="n" style="font-size:18px;font-weight:500">2</span><span class="m">יח׳</span></div>
+        <div class="row pulse" style="--i:2"><span class="g"><span class="t">ביצים</span><span class="m">מינימום <span class="n">12</span></span></span><span class="n" style="font-size:18px;font-weight:500">10</span><span class="m">יח׳</span></div>
+        <div class="mini step" style="--i:3">− &nbsp;השתמשנו באחד</div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">09 · מזווה</div>
+      <h2>הכמות המינימלית עושה הכול</h2>
+      <p>לכל מוצר יש <b>כמות מינימלית</b>. ברגע שהמלאי יורד מתחתיה, המוצר נכנס לרשימת הקניות <b>לבד</b>. זה הכלל היחיד שהופך מלאי ממטלה לשירות.</p>
+      <p>מינימום <span class="n">0</span> = «אל תטרידו אותי על זה».</p>
+      <div class="why">כפתור המינוס הוא הפקד החשוב במערכת. עשר שניות אחרי שנגמר החלב זה הרגע היחיד שבו זה יירשם — ולכן זו לחיצה אחת, לא טופס.</div>
+    </div>
+  </section>
+
+  <!-- 10 ────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">מזווה</div>
+      <div class="sub">אצוות ותפוגה</div>
+      <div class="body">
+        <div class="sect step" style="--i:0">חלב · <span class="n">3</span> ליטר</div>
+        <div class="row pulse" style="--i:1"><span class="g"><span class="t">אצווה א׳</span><span class="m">נקנה 02/09</span></span><span class="mark-red">פג 09/09</span><span class="n">1</span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">אצווה ב׳</span><span class="m">נקנה 07/09</span></span><span class="m">פג 14/09</span><span class="n">2</span></div>
+        <div class="warn step" style="--i:3">שימוש יורד תמיד מהאצווה שפגה ראשונה</div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">10 · תפוגה</div>
+      <h2>שני קרטונים, שני תאריכים</h2>
+      <p>מלאי נשמר <b>לפי אצוות</b>, לא כמספר אחד. שני קרטוני חלב שנקנו בהפרש שבוע פגים בהפרש שבוע — ומספר בודד לא יכול לומר את זה.</p>
+      <p>כשמשתמשים, הכמות יורדת <b>מהאצווה שפגה ראשונה</b>. כל סדר אחר זורק אוכל באופן שיטתי.</p>
+      <div class="why">תאריך התפוגה מחושב לבד מ«ימי המדף» של המוצר. ברגע שצריך לחשב «היום ועוד תשעה ימים» ביד — מפסיקים להזין תפוגות.</div>
+    </div>
+  </section>
+
+  <!-- 11 ────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="11">
+    <div class="phone">
+      <div class="head">רשימת קניות</div>
+      <div class="sub">4 עוד לא נקנו</div>
+      <div class="body">
+        <div class="sect step" style="--i:0">פירות וירקות</div>
+        <div class="row step" style="--i:0"><span style="width:34px;text-align:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v16H4V4Z"/></svg></span><span class="g"><span class="t">עגבניות</span></span><span class="n" style="font-size:18px">1</span><span class="m">ק״ג</span></div>
+        <div class="sect step" style="--i:1">חלב וביצים</div>
+        <div class="row bysys pulse" style="--i:1"><span style="width:34px;text-align:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v16H4V4Z"/></svg></span><span class="g"><span class="t">חלב</span><span class="mark-blue">נגמר במזווה</span></span><span class="n" style="font-size:18px">2</span><span class="m">ליטר</span></div>
+        <div class="row step" style="--i:2"><span style="width:34px;text-align:center;color:var(--red)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v16H4V4ZM7.5 12.2l3 3 6-6.4"/></svg></span><span class="g"><span class="t struck">ביצים</span></span><span class="n" style="font-size:18px;opacity:.4">12</span></div>
+        <div class="sect step" style="--i:3">ניקיון</div>
+        <div class="row step" style="--i:3"><span style="width:34px;text-align:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v16H4V4Z"/></svg></span><span class="g"><span class="t">אבקת כביסה</span></span><span class="n" style="font-size:18px">1</span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">11 · קניות</div>
+      <h2>בסדר ההליכה בסופר</h2>
+      <p>הרשימה ממוינת <b>לפי מעברי החנות</b>, לא לפי סדר ההקלדה — סדר ההקלדה הוא הסדר היחיד שמבטיח לעבור את הסופר פעמיים.</p>
+      <p>פריט עם <span class="mark-blue">קו כחול</span> נכנס לרשימה <b>מעצמו</b> כי נגמר במזווה. זו הערת שוליים של המערכת, כדי שהרשימה תסביר את עצמה ולא תיראה כאילו יש לה דעות משלה.</p>
+      <div class="why">פריט שמסומן <b>לא נעלם</b>. הוא נשאר במקומו מחוק בקו — שורה שנעלמת מתחת לאגודל גוררת את השורה הבאה למעלה, וזה בדיוק איך מסמנים בטעות את הפריט הלא נכון.</div>
+    </div>
+  </section>
+
+  <!-- 12 ────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">סגירת קנייה</div>
+      <div class="sub">7 פריטים</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g label">כמה שילמנו · ₪</span><span class="n" style="font-size:20px">412</span></div>
+        <div class="row step" style="--i:1"><span class="g label">איפה</span><span>שופרסל</span></div>
+        <div class="row step" style="--i:1"><span class="g label">לקטגוריה</span><span>סופר</span></div>
+        <hr class="rule2 step" style="--i:2">
+        <div class="row step" style="--i:2"><span class="g label">סך הקנייה</span><span class="amt" style="font-size:19px">₪412</span></div>
+        <div class="sect step" style="--i:3">ואז, לבד</div>
+        <div class="row pulse" style="--i:3"><span class="g"><span class="t">7 מוצרים נכנסו למזווה</span><span class="m">שורה אחת נרשמה בתקציב</span></span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">12 · סגירה</div>
+      <h2>לחיצה אחת, שלושה דברים</h2>
+      <p>סימון «נקנה» <b>מכניס את המוצר למזווה</b> באותה לחיצה — בלי הזנה כפולה, שאף אחד לא עושה פעמיים.</p>
+      <p>ו«סיום» סוגר את הסל ורושם בתקציב <b>שורה אחת</b>: ₪412 בסופר. לא ארבעים שורות של ₪3.90 — זה תקציב מדויק יותר שאף אחד לא קורא.</p>
+    </div>
+  </section>
+
+  <!-- 13 ────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">קאסה</div>
+      <div class="sub">הבוקר בבית · 07:00</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g"><span class="t">נגמר ונוסף לרשימה</span><span class="m">חלב, ביצים</span></span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">להשתמש לפני שיתקלקל</span><span class="m">קוטג׳ (היום), גבינה (3 ימים)</span></span></div>
+        <div class="row pulse" style="--i:2"><span class="g"><span class="t">ארנונה</span><span class="m">בעוד 3 ימים · כ־<span class="n">₪400</span></span></span></div>
+        <div class="warn step" style="--i:3">על מה שכבר פג תוקף — לא נשלחת התראה</div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">13 · התראות</div>
+      <h2>פעם ביום, בטלגרם</h2>
+      <p>כל בוקר המערכת מרעננת את הרשימה ושולחת סיכום אחד: מה נגמר, מה עומד להתקלקל, ואיזה חשבון מגיע.</p>
+      <p>על <b>מה שכבר פג תוקף אין התראה</b> — בשלב הזה כבר אי אפשר לעשות כלום, והמסך מספיק. התראה שאי אפשר לפעול לפיה היא התראה שמלמדת להתעלם.</p>
+      <div class="why">בלי מפתחות טלגרם המערכת פשוט שקטה. זו לא שגיאה — זו דרך תקפה להפעיל אותה.</div>
+    </div>
+  </section>
+
+  <!-- 14 ────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">הגדרות</div>
+      <div class="body">
+        <div class="sect step" style="--i:0">חשבונות · ₪</div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">עובר ושב</span><span class="m">בנק</span></span><span class="amt">12,430</span></div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">מזומן</span></span><span class="amt">300</span></div>
+        <div class="sect step" style="--i:1">מי בבית</div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">ישראל</span></span><span class="label">בעל הבית</span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">נעה</span></span><span class="label">שותפה</span></div>
+        <div class="sect step" style="--i:3">מסד הנתונים</div>
+        <div class="row step" style="--i:3"><span class="g label">מצב הסכימה</span><span>מעודכנת</span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">14 · הגדרות</div>
+      <h2>חשבונות, אנשים, ומסד</h2>
+      <p><b>יתרת חשבון מחושבת</b> — יתרת פתיחה ועוד כל תנועה מאז. אף פעם לא מספר שמור: יתרה שמורה ורשימת תנועות מתפצלות, ואז אי אפשר לסמוך על אף אחת מהן.</p>
+      <p>הנכנס הראשון הופך ל<b>בעל הבית</b>. כל מי שנכנס אחריו ממתין לאישור ורואה מסך המתנה בלבד.</p>
+      <div class="why">אחרי כל עדכון של המערכת — «הרצת מיגרציה». היא בטוחה לחזור עליה כמה פעמים שרוצים ולא מוחקת נתונים.</div>
+    </div>
+  </section>
+
+  <!-- 15 ────────────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="12">
+    <div class="phone">
+      <div class="head">למה זה נראה ככה</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span class="g"><span class="t">קווים, לא כרטיסים</span><span class="m">פנקס הקפה של המכולת, 1975</span></span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">שחור = ביתרה</span><span class="m">אדום = בחריגה. אין ירוק בכלל</span></span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">ספרות בגופן משלהן</span><span class="m">טור נסרק רק כשכל ספרה באותו רוחב</span></span></div>
+        <div class="row step" style="--i:3"><span class="g"><span class="t">בלי פינות מעוגלות</span><span class="m">ובלי צללים. בשום מקום</span></span></div>
+        <hr class="rule2 step" style="--i:4">
+        <div class="row step" style="--i:4"><span class="g label">docs/DESIGN.md</span><span class="m">העקרונות המלאים</span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">15 · העיצוב</div>
+      <h2>פנקס, לא אפליקציה</h2>
+      <p>הפנקס המשורטט של המכולת הוא האב הקדמון הישיר של המערכת הזאת: מזווה, רשימה מתגלגלת ומעטפות תקציב הם כולם צאצאים שלו — והוא היה מותאם בדיוק למשימה שהיא מבצעת, לסרוק טור מספרים ולמצוא את אי־ההתאמה.</p>
+      <p><b>ואין ירוק.</b> שחור = ביתרה, אדום = בחריגה — זו החשבונאות עצמה. מצב תקין לא מסומן בכלום, ובדיוק לכן העיפרון האדום אומר משהו כשהוא מופיע.</p>
+      <div class="why">אם המערכת תתחיל להיראות «נחמדה» — כנראה חזרנו לברירות המחדל.</div>
+    </div>
+  </section>
+
+  </main>
+</div>
+
+<nav class="controls">
+  <button id="prev" aria-label="הקודם">‹</button>
+  <button id="play" aria-label="נגן או השהה">השהיה</button>
+  <button id="next" aria-label="הבא">›</button>
+  <span class="spacer"></span>
+  <span class="dots" id="dots"></span>
+</nav>
+
+<script>
+/*
+  The projector. Everything it does is: show one <section>, run a clock, move
+  on. No frameworks, no build, no assets — which is what makes this guide free
+  to ship and impossible to leave un-rebuilt when the app changes.
+*/
+(function () {
+  var scenes = [].slice.call(document.querySelectorAll('.scene'));
+  var bar = document.getElementById('bar');
+  var clock = document.getElementById('clock');
+  var dots = document.getElementById('dots');
+  var playBtn = document.getElementById('play');
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var at = 0, playing = !reduced, t0 = 0, raf = 0;
+
+  scenes.forEach(function (_, i) {
+    var d = document.createElement('i');
+    d.title = 'סצנה ' + (i + 1);
+    d.onclick = function () { go(i); };
+    dots.appendChild(d);
+  });
+  var pips = [].slice.call(dots.children);
+
+  function duration() {
+    return (parseFloat(scenes[at].dataset.dur) || 9) * 1000;
+  }
+
+  function paint() {
+    scenes.forEach(function (s, i) { s.classList.toggle('on', i === at); });
+    pips.forEach(function (p, i) {
+      p.className = i === at ? 'cur' : (i < at ? 'done' : '');
+    });
+    clock.textContent = (at + 1) + ' / ' + scenes.length;
+    document.getElementById('prev').disabled = at === 0;
+    document.getElementById('next').disabled = at === scenes.length - 1;
+  }
+
+  // Elapsed time within the current scene, kept explicitly rather than derived
+  // from t0 alone. Pausing has to freeze the clock where it stands: an earlier
+  // version recomputed t0 from a variable the tick function was shadowing, so
+  // every pause silently restarted the scene from zero.
+  var elapsed = 0;
+
+  function go(i) {
+    at = Math.max(0, Math.min(scenes.length - 1, i));
+    elapsed = 0;
+    t0 = performance.now();
+    bar.style.width = '0%';
+    paint();
+    // Force a reflow so the entry animations replay: the class is already on,
+    // and without this a second visit to a scene would render it static.
+    void scenes[at].offsetWidth;
+  }
+
+  function tick(now) {
+    raf = requestAnimationFrame(tick);
+    if (!playing) { t0 = now - elapsed; return; }
+    elapsed = now - t0;
+    var progress = Math.min(1, elapsed / duration());
+    bar.style.width = (progress * 100) + '%';
+    if (progress >= 1) {
+      if (at === scenes.length - 1) { playing = false; playBtn.textContent = 'מהתחלה'; }
+      else go(at + 1);
+    }
+  }
+
+  playBtn.onclick = function () {
+    if (at === scenes.length - 1 && !playing) { go(0); playing = true; }
+    else playing = !playing;
+    playBtn.textContent = playing ? 'השהיה' : 'נגן';
+    t0 = performance.now() - elapsed;
+  };
+  document.getElementById('next').onclick = function () { go(at + 1); };
+  document.getElementById('prev').onclick = function () { go(at - 1); };
+
+  addEventListener('keydown', function (e) {
+    // RTL: the left arrow moves forward, the way the page reads.
+    if (e.key === 'ArrowLeft') go(at + 1);
+    else if (e.key === 'ArrowRight') go(at - 1);
+    else if (e.key === ' ') { e.preventDefault(); playBtn.click(); }
+  });
+
+  go(0);
+  playBtn.textContent = playing ? 'השהיה' : 'נגן';
+  raf = requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

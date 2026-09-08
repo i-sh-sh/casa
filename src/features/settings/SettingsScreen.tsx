@@ -66,6 +66,16 @@ export function SettingsScreen() {
         {isOwner && <DatabaseSection />}
 
         <section className="section">
+          <h2>מדריך</h2>
+          {/* A plain <a>, not a router Link: the guide is a static page served
+              beside the app, not a screen inside it. */}
+          <a className="btn btn-block" href="/guide">איך המערכת עובדת</a>
+          <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+            חמישה־עשר מסכים קצרים שמסבירים את הכול — התקציב, המזווה, הרשימה, ולמה זה נראה ככה.
+          </p>
+        </section>
+
+        <section className="section">
           <button className="btn btn-block" onClick={() => void signOut()}>יציאה</button>
         </section>
 
