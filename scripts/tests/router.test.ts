@@ -18,6 +18,8 @@ test('a module path is read from the URL, with no help from req.query', () => {
   assert.deepEqual(segmentsOf(req('/api/money/budget')), ['budget']);
   assert.deepEqual(segmentsOf(req('/api/shopping/items')), ['items']);
   assert.deepEqual(segmentsOf(req('/api/money/bills/3/pay')), ['bills', '3', 'pay']);
+  assert.deepEqual(segmentsOf(req('/api/users/a%40b.com')), ['users', 'a@b.com']);
+  assert.deepEqual(segmentsOf(req('/admin/users/a%40b.com')), ['users', 'a@b.com']);
 });
 
 test('the query string is not part of the path', () => {
