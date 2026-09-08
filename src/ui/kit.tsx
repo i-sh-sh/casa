@@ -3,7 +3,6 @@ import {
   type ReactNode, type FormEvent,
 } from 'react';
 import { Icon } from './Icon.js';
-import { markBusy } from '../lib/version.js';
 
 let busyCount = 0;
 
@@ -40,12 +39,10 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     // An open sheet is a half-finished action — a form with an amount already
     // typed into it. A background update must wait for it to close rather
     // than reload the page out from under it.
-    const release = markBusy();
     return () => {
       unmark();
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previous;
-      release();
     };
   }, [onClose]);
 
