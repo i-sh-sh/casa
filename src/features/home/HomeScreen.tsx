@@ -35,7 +35,6 @@ export function HomeScreen() {
   const shopping = useAsync(() => api.get<ShoppingItem[]>('/shopping/items', { status: 'open' }));
   const expiring = useAsync(() => api.get<ExpiringEntry[]>('/pantry/expiring', { days: 5 }));
   const bills = useAsync(() => api.get<RecurringBill[]>('/money/bills'));
-  const balance = useAsync(() => api.get<BalanceBetweenUs>('/money/balance'));
   const low = useAsync(() => api.get<Product[]>('/pantry/products', { below_min: '1' }));
 
   const loading = budget.loading && shopping.loading && expiring.loading;
@@ -45,22 +44,19 @@ export function HomeScreen() {
     return days <= b.remind_days;
   });
 
-  const names = new Map((balance.data?.per_person ?? []).map((p) => [p.email, p.display_name]));
-
   // "Nothing to report" and "we could not find out" are different answers, and
   // every `?? 0` below would otherwise read a failed panel as an empty one —
   // a blind dashboard announcing that the house is calm.
-  const failure = budget.error ?? shopping.error ?? expiring.error ?? bills.error ?? balance.error ?? low.error;
+  const failure = budget.error ?? shopping.error ?? expiring.error ?? bills.error ?? low.error;
   const reloadAll = () => {
     budget.reload(); shopping.reload(); expiring.reload();
-    bills.reload(); balance.reload(); low.reload();
+    bills.reload(); low.reload();
   };
 
   const quiet = !loading && !failure
     && (shopping.data?.length ?? 0) === 0
     && (expiring.data?.length ?? 0) === 0
-    && soonBills.length === 0
-    && (balance.data?.amount ?? 0) === 0;
+    && soonBills.length === 0;
 
   // The same number the budget screen leads with. Two screens that disagree
   // about what the headline figure is are two screens nobody trusts.
@@ -100,7 +96,7 @@ export function HomeScreen() {
         {quiet && (
           <div className="empty">
             <div className="headline">אין מה לעשות היום.</div>
-            <p>אין מה לקנות, שום דבר לא עומד להתקלקל, אין חשבון שמחכה, ואף אחד לא חייב לאף אחד.</p>
+            <p>אין מה לקנות, שום דבר לא עומד להתקלקל, ואין חשבון שמחכה.</p>
           </div>
         )}
 
@@ -132,15 +128,6 @@ export function HomeScreen() {
             count={soonBills.length}
             tone="red"
             body={soonBills.map((b) => `${b.name}${b.amount_estimate ? ` · ${formatILS(b.amount_estimate)}` : ''}`).join(' · ')}
-          />
-        )}
-
-        {balance.data && balance.data.amount > 0 && (
-          <Entry
-            to="/transactions"
-            label="איזון בינינו"
-            body={`${names.get(balance.data.from_email ?? '') ?? ''} חייב ל${names.get(balance.data.to_email ?? '') ?? ''}`}
-            amount={balance.data.amount}
           />
         )}
       </div>
