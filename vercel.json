@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/guide", "destination": "/guide.html" },
+    { "source": "/api/admin/:path*", "destination": "/api/admin/[...path]" },
+    { "source": "/api/money/:path*", "destination": "/api/money/[...path]" },
+    { "source": "/api/pantry/:path*", "destination": "/api/pantry/[...path]" },
+    { "source": "/api/shopping/:path*", "destination": "/api/shopping/[...path]" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
