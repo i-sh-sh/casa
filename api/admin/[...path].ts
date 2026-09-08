@@ -1,6 +1,6 @@
 import { router, type Ctx } from '../_lib/router.js';
 import { query, one, getPool } from '../_lib/db.js';
-import { badRequest, forbidden, notFound } from '../_lib/http.js';
+import { badRequest, forbidden, notFound, HttpError } from '../_lib/http.js';
 import { oneOf, optionalStr, str } from '../_lib/validate.js';
 import { SCHEMA_SQL } from '../../db/schema.js';
 import { SEED_SQL } from './_seed.js';
@@ -19,7 +19,27 @@ const ROLES = ['owner', 'member', 'viewer', 'pending'] as const;
 async function migrate() {
   const client = await getPool().connect();
   try {
-    await client.query(SCHEMA_SQL);
+    try {
+      await client.query(SCHEMA_SQL);
+    } catch (err) {
+      // Say what Postgres said.
+      //
+      // This used to become a flat "שגיאת שרת", and that cost hours: one
+      // statement in the middle of the file failed (an index expression that
+      // was not IMMUTABLE), every table after it was silently skipped, and the
+      // only clue anywhere was a list of missing tables on another card. The
+      // owner pressing this button is the one person who can act on the real
+      // message, and this route is owner-only, so they get it.
+      const pg = err as { message?: string; code?: string; position?: string; hint?: string };
+      const at = pg.position ? charContext(SCHEMA_SQL, Number(pg.position)) : null;
+      throw new HttpError(500, [
+        'המיגרציה נכשלה ועצרה באמצע. מה ש-Postgres אמר:',
+        `${pg.code ? `[${pg.code}] ` : ''}${pg.message ?? String(err)}`,
+        at ? `ליד: ${at}` : null,
+        pg.hint ?? null,
+        'הטבלאות שכן נוצרו נשארו. אחרי תיקון אפשר להריץ שוב בבטחה.',
+      ].filter(Boolean).join('\n'));
+    }
     const tables = await client.query<{ table_name: string }>(
       `SELECT table_name FROM information_schema.tables
         WHERE table_schema = 'public' ORDER BY table_name`,
@@ -28,6 +48,15 @@ async function migrate() {
   } finally {
     client.release();
   }
+}
+
+/** The line the failure points at — a character offset alone is unreadable. */
+function charContext(sql: string, position: number): string {
+  if (!Number.isFinite(position) || position < 1) return '';
+  const upto = sql.slice(0, position);
+  const lineStart = upto.lastIndexOf('\n') + 1;
+  const lineEnd = sql.indexOf('\n', position);
+  return sql.slice(lineStart, lineEnd === -1 ? position + 60 : lineEnd).trim().slice(0, 160);
 }
 
 /**

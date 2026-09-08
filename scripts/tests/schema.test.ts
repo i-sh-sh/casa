@@ -52,6 +52,32 @@ test('the tables the app actually reads all exist in the schema', () => {
   }
 });
 
+test('no index expression depends on the clock or the time zone', () => {
+  // This one is written from a real failure, not a hypothetical.
+  //
+  // `CREATE INDEX ... ON transactions (date_trunc('month', occurred_on))` cannot
+  // be created at all: there is no date_trunc(text, date), so Postgres promotes
+  // the argument to TIMESTAMPTZ, and that overload is STABLE rather than
+  // IMMUTABLE because its answer depends on the session time zone. Postgres
+  // refuses it with 42P17 — and because the whole schema runs as one script,
+  // the failure took every table after it down with it. Six tables existed,
+  // eight silently did not.
+  //
+  // Any function here would be the same class of bug, so the list is banned
+  // outright rather than reasoned about case by case.
+  const NOT_IMMUTABLE = ['date_trunc', 'now', 'current_date', 'current_timestamp', 'age', 'to_char', 'timezone', 'localtime'];
+  const indexes = ddl(SCHEMA_SQL).match(/CREATE\s+(?:UNIQUE\s+)?INDEX[\s\S]*?;/gi) ?? [];
+  assert.ok(indexes.length > 0, 'expected to find index definitions');
+  for (const statement of indexes) {
+    for (const fn of NOT_IMMUTABLE) {
+      assert.ok(
+        !new RegExp(`\\b${fn}\\s*\\(`, 'i').test(statement),
+        `index expression calls ${fn}(), which is not IMMUTABLE and cannot be indexed:\n${statement}`,
+      );
+    }
+  }
+});
+
 test('money columns are NUMERIC, never floating point', () => {
   // One REAL or DOUBLE PRECISION column is all it takes for a budget to stop
   // adding up to itself.

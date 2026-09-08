@@ -141,8 +141,22 @@ CREATE TABLE IF NOT EXISTS transactions (
   CHECK (transfer_id IS NULL OR category_id IS NULL)
 );
 
-CREATE INDEX IF NOT EXISTS transactions_month
-  ON transactions (date_trunc('month', occurred_on)) WHERE deleted_at IS NULL;
+-- A plain column index, and not `date_trunc('month', occurred_on)`.
+--
+-- That expression index looked clever and could not be created at all:
+-- there is no date_trunc(text, date), so Postgres promotes the argument to
+-- TIMESTAMPTZ — the preferred datetime type — and that overload is STABLE,
+-- not IMMUTABLE, because its answer depends on the session time zone. An
+-- index expression must be IMMUTABLE, so the statement failed with 42P17 and
+-- took the rest of the migration down with it: every table from
+-- recurring_bills onward was silently never created.
+--
+-- It was also unnecessary. Every query here asks for a half-open range
+-- (`occurred_on >= $1 AND occurred_on < $1 + interval '1 month'`), which a
+-- btree on the bare column serves perfectly — and which also serves the
+-- date ranges that are not month-aligned.
+CREATE INDEX IF NOT EXISTS transactions_occurred_on
+  ON transactions (occurred_on) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS transactions_category
   ON transactions (category_id, occurred_on) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS transactions_account
