@@ -76,6 +76,13 @@ CREATE TABLE IF NOT EXISTS categories (
   name            TEXT NOT NULL,
   kind            TEXT NOT NULL DEFAULT 'spending'
                   CHECK (kind IN ('spending', 'income', 'saving')),
+  -- How much control we have over this expense, which is a different axis
+  -- from `kind` and the more useful one. `kind` says what an amount is;
+  -- `commitment` says what could be done about it — the only question worth
+  -- asking when a month does not add up. "Spend less" is not advice; "of your
+  -- ₪9,700, ₪3,570 is rigid and ₪1,450 is liquid" is.
+  commitment      TEXT NOT NULL DEFAULT 'flexible'
+                  CHECK (commitment IN ('rigid', 'flexible', 'liquid', 'unplanned')),
   -- What we normally intend to put here each month. Used to pre-fill a new
   -- month in one click; it is a suggestion, never an allocation on its own.
   monthly_target  NUMERIC(12,2),
@@ -318,3 +325,32 @@ CREATE TABLE IF NOT EXISTS sent_notifications (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (kind, subject_key, sent_on)
 );
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Columns added after the first deploy
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- CREATE TABLE IF NOT EXISTS does nothing to a table that already exists, so
+-- a column added to a definition above never reaches a live database. That is
+-- the failure this section exists to prevent, and it is a quiet one: the code
+-- ships expecting a column, the migration reports success, and every query
+-- touching it fails with 42703.
+--
+-- So every column added after the first deploy is repeated here as an
+-- ADD COLUMN IF NOT EXISTS. Duplicating the definition is the price; the
+-- alternative is a schema that is only correct on a database nobody has.
+
+ALTER TABLE categories ADD COLUMN IF NOT EXISTS commitment TEXT NOT NULL DEFAULT 'flexible';
+
+DO $$
+BEGIN
+  -- A CHECK cannot be added with IF NOT EXISTS, and re-adding one that is
+  -- already there is an error — which would abort the whole migration, exactly
+  -- the way a bad index expression once did.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'categories_commitment_check'
+  ) THEN
+    ALTER TABLE categories ADD CONSTRAINT categories_commitment_check
+      CHECK (commitment IN ('rigid', 'flexible', 'liquid', 'unplanned'));
+  END IF;
+END $$;

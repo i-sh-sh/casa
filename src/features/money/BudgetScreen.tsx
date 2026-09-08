@@ -4,8 +4,11 @@ import { Link } from '../../lib/router.js';
 import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
-import { formatILS, monthKey, nextMonth, previousMonth } from '@shared/money.js';
-import type { BudgetMonth, EnvelopeRow } from '@shared/types.js';
+import {
+  COMMITMENTS, COMMITMENT_LABELS, COMMITMENT_NOTES,
+  formatILS, monthKey, nextMonth, previousMonth,
+} from '@shared/money.js';
+import type { BudgetMonth, CategoryAverage, EnvelopeRow } from '@shared/types.js';
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
@@ -16,21 +19,18 @@ function monthLabel(month: string): string {
 }
 
 /**
- * The envelopes.
+ * The envelopes, and the three questions the method says to ask of them.
  *
- * The screen is built around `available` — not what was allocated, not what
- * was spent. A bank app already tells you what you spent; only this can tell
- * you what you may still spend on *this particular thing*, which is the
- * number that changes a decision at the till.
- *
- * There is no green anywhere. An envelope in credit is set in plain ink,
- * because that is what "in the black" means and it is a real accounting
- * convention rather than a UI palette. The red pencil is reserved for the one
- * state that needs acting on, and because it is reserved, it carries.
+ * The hero is **cash flow** — income minus spending — rather than the
+ * envelope model's "to be budgeted". They answer different questions and only
+ * one of them changes behaviour: a household shrugs at ₪1,200 short this
+ * month and does not shrug at ₪43,200 over three years. "To be budgeted"
+ * stays, one line down, where it belongs.
  */
 export function BudgetScreen() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const budget = useAsync(() => api.get<BudgetMonth>('/money/budget', { month }), [month]);
+  const averages = useAsync(() => api.get<CategoryAverage[]>('/money/averages', { month }), [month]);
   const [editing, setEditing] = useState<EnvelopeRow | null>(null);
   const toast = useToast();
 
@@ -39,6 +39,7 @@ export function BudgetScreen() {
     (acc[env.group_name ?? 'ללא קבוצה'] ??= []).push(env);
     return acc;
   }, {});
+  const averageFor = new Map((averages.data ?? []).map((a) => [a.category_id, a]));
 
   async function autofill() {
     try {
@@ -50,7 +51,7 @@ export function BudgetScreen() {
     }
   }
 
-  const over = (data?.to_be_budgeted ?? 0) < 0;
+  const short = (data?.flow.monthly ?? 0) < 0;
 
   return (
     <>
@@ -61,8 +62,6 @@ export function BudgetScreen() {
       />
 
       <div className="page">
-        {/* RTL: travelling back in time is rightward, so the older month sits
-            on the right and its chevron points that way. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s2)' }}>
           <button className="btn btn-quiet" onClick={() => setMonth(nextMonth(month))} aria-label="החודש הבא">
             <Icon name="back" size={18} />
@@ -78,21 +77,29 @@ export function BudgetScreen() {
 
         {data && (
           <>
-            {/* The one typographic event on this screen. */}
             <div className="hero">
-              <div className="label">{over ? 'הקצינו יותר ממה שנכנס' : 'ממתין לייעוד'}</div>
-              <div className={`figure ${over ? 'over' : ''}`}>{formatILS(data.to_be_budgeted)}</div>
+              <div className="label">תזרים חודשי</div>
+              <div className={`figure ${short ? 'over' : ''}`}>{formatILS(data.flow.monthly, { sign: true })}</div>
+              <div className="meta" style={{ marginTop: 'var(--s2)' }}>
+                נכנס <span className="n">{formatILS(data.flow.income)}</span>
+                {' · הוצא '}<span className="n">{formatILS(data.flow.spent)}</span>
+              </div>
             </div>
 
-            <div className="rows" style={{ marginTop: 'var(--s4)' }}>
-              <Line label="נכנס החודש" value={data.income} />
-              <Line label="הוקצה" value={data.allocated} />
-              <Line label="הוצא" value={data.spent} />
-            </div>
+            {short && <Projection flow={data.flow} />}
 
-            <button className="btn btn-block" style={{ marginTop: 'var(--s4)' }} onClick={() => void autofill()}>
-              מילוי החודש לפי היעדים
-            </button>
+            <Ladder data={data} />
+
+            <section className="section">
+              <h2>החודש · ₪</h2>
+              <div className="rows">
+                <Line label="הוקצה" value={data.allocated} />
+                <Line label="ממתין לייעוד" value={data.to_be_budgeted} />
+              </div>
+              <button className="btn btn-block" style={{ marginTop: 'var(--s4)' }} onClick={() => void autofill()}>
+                מילוי החודש לפי היעדים
+              </button>
+            </section>
 
             {data.envelopes.length === 0 && (
               <Empty
@@ -127,6 +134,7 @@ export function BudgetScreen() {
         <AllocateSheet
           env={editing}
           month={month}
+          average={averageFor.get(editing.category_id) ?? null}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); budget.reload(); }}
         />
@@ -135,23 +143,104 @@ export function BudgetScreen() {
   );
 }
 
-function Line({ label, value }: { label: string; value: number }) {
+/**
+ * The same subtraction, said out loud.
+ *
+ * Not a forecast — ₪1,200 multiplied by 12 and 36. That is the entire device,
+ * and it is the one part of the method that reliably changes what people do.
+ * It appears only for a deficit: multiplying a good month by 36 to promise
+ * ₪43,200 of savings would be the same arithmetic used dishonestly.
+ */
+function Projection({ flow }: { flow: BudgetMonth['flow'] }) {
   return (
-    <div className="row" style={{ minHeight: 40 }}>
-      <span className="grow label">{label}</span>
-      <span className="n amount">{formatILS(value)}</span>
-    </div>
+    <section className="section">
+      <h2 style={{ color: 'var(--red)', borderBottomColor: 'var(--red)' }}>
+        אם שום דבר לא ישתנה
+      </h2>
+      <div className="rows">
+        {[
+          ['בחודש', flow.monthly],
+          ['בשנה', flow.yearly],
+          ['בשלוש שנים', flow.three_year],
+        ].map(([label, value]) => (
+          <div className="row" key={label as string} style={{ minHeight: 44 }}>
+            <span className="grow label">{label as string}</span>
+            <span className="n amount over" style={{ fontSize: 20, fontWeight: 600 }}>
+              {formatILS(value as number)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+        זה לא תחזית. זה אותו חיסור, כפול שתים־עשרה וכפול שלושים ושש.
+      </p>
+    </section>
   );
 }
 
 /**
- * One envelope.
+ * Where the flexibility is.
  *
- * Inverted pairing, on purpose: the label is the small heavy tracked thing and
- * the value is the large light one. And `available` is the only figure given
- * the money column — spent and allocated are context, set small underneath,
- * so the eye never has to choose between three numbers on one line.
+ * "Spend less" is not advice. Naming which part of the month can actually be
+ * moved is: a household whose rigid share eats its income has a different
+ * problem, and a different remedy, from one whose liquid share does.
  */
+function Ladder({ data }: { data: BudgetMonth }) {
+  const { commitments, unplanned } = data;
+  if (commitments.every((c) => c.allocated === 0)) return null;
+
+  return (
+    <section className="section">
+      <h2>איפה יש גמישות <span className="count">· הוקצה ₪</span></h2>
+      <div className="rows">
+        {COMMITMENTS.map((key) => {
+          const slice = commitments.find((c) => c.commitment === key);
+          if (!slice) return null;
+          return (
+            <div className="row" key={key}>
+              <span className="grow">
+                <span className="title" style={{ display: 'block' }}>{COMMITMENT_LABELS[key]}</span>
+                <span className="meter" style={{ maxWidth: 180 }} aria-hidden="true">
+                  <i style={{ width: `${Math.round(slice.share * 100)}%` }} />
+                </span>
+                <span className="meta">{COMMITMENT_NOTES[key]}</span>
+              </span>
+              <span className="margin-col n">{Math.round(slice.share * 100)}%</span>
+              <span className="n amount">{formatILS(slice.allocated, { symbol: false })}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {!unplanned.meets_floor && (
+        <div className="note-error" role="status">
+          <div style={{ display: 'flex', gap: 'var(--s2)', alignItems: 'flex-start' }}>
+            <Icon name="alert" size={18} />
+            <div style={{ flex: 1 }}>
+              לבלת״מ מוקצים <span className="n">{Math.round(unplanned.share * 100)}%</span> מהחודש.
+              השיטה ממליצה על <span className="n">5%</span> לפחות — חסרים{' '}
+              <span className="n">{formatILS(unplanned.shortfall)}</span>.
+              <div style={{ marginTop: 'var(--s1)', fontSize: 14 }}>
+                תמיד יש בלת״מ. חתונה, רופא שיניים, טלפון שנשבר — אף פעם לא אותו דבר,
+                ואף פעם לא באמת הפתעה ש<em>משהו</em> קרה.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function Line({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="row" style={{ minHeight: 40 }}>
+      <span className="grow label">{label}</span>
+      <span className={`n amount ${value < 0 ? 'over' : ''}`}>{formatILS(value)}</span>
+    </div>
+  );
+}
+
 function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void }) {
   const over = env.available < 0;
   const ratio = env.allocated > 0 ? Math.min(env.spent / env.allocated, 1) : env.spent > 0 ? 1 : 0;
@@ -164,9 +253,9 @@ function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void })
           <i style={{ width: `${ratio * 100}%`, background: over ? 'var(--red)' : undefined }} />
         </span>
         <span className="meta">
-          הוצא <span className="n">{formatILS(env.spent, { symbol: false })}</span>
-          {' מתוך '}
-          <span className="n">{formatILS(env.allocated, { symbol: false })}</span>
+          {COMMITMENT_LABELS[env.commitment]}
+          {' · הוצא '}<span className="n">{formatILS(env.spent, { symbol: false })}</span>
+          {' מתוך '}<span className="n">{formatILS(env.allocated, { symbol: false })}</span>
           {over && <> · <span className="mark mark-red">חריגה</span></>}
         </span>
       </span>
@@ -177,13 +266,23 @@ function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void })
   );
 }
 
-function AllocateSheet({ env, month, onClose, onSaved }: { env: EnvelopeRow; month: string; onClose: () => void; onSaved: () => void }) {
+function AllocateSheet({ env, month, average, onClose, onSaved }: {
+  env: EnvelopeRow;
+  month: string;
+  average: CategoryAverage | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [allocated, setAllocated] = useState(String(env.allocated));
   const over = env.available < 0;
 
   return (
     <Sheet title={env.category_name} onClose={onClose}>
       <div className="rows" style={{ marginBottom: 'var(--s5)' }}>
+        <div className="row" style={{ minHeight: 40 }}>
+          <span className="grow label">רמת מחויבות</span>
+          <span>{COMMITMENT_LABELS[env.commitment]}</span>
+        </div>
         <div className="row" style={{ minHeight: 40 }}>
           <span className="grow label">הוצא החודש</span>
           <span className="n amount">{formatILS(env.spent)}</span>
@@ -207,15 +306,31 @@ function AllocateSheet({ env, month, onClose, onSaved }: { env: EnvelopeRow; mon
         <Field label="להקצות החודש · ₪">
           <input className="input" type="number" inputMode="decimal" step="10" value={allocated} onChange={(e) => setAllocated(e.target.value)} autoFocus />
         </Field>
-        {env.monthly_target != null && (
-          <button
-            type="button"
-            className="btn btn-sm"
-            style={{ marginBottom: 'var(--s4)' }}
-            onClick={() => setAllocated(String(env.monthly_target))}
-          >
-            היעד הרגיל · {formatILS(env.monthly_target)}
-          </button>
+
+        <div style={{ display: 'flex', gap: 'var(--s2)', flexWrap: 'wrap', marginBottom: 'var(--s4)' }}>
+          {/* What it actually cost beats what we meant it to cost. The method's
+              first stage is to map real months before budgeting a shekel; we
+              hold every transaction, so the mapping is already done. */}
+          {average && average.months_observed > 0 && (
+            <button type="button" className="btn btn-sm" onClick={() => setAllocated(String(Math.round(average.average)))}>
+              בפועל · {formatILS(average.average)}
+              <span className="meta" style={{ marginInlineStart: 4 }}>
+                ({average.months_observed === 1 ? 'חודש אחד' : `${average.months_observed} חודשים`})
+              </span>
+            </button>
+          )}
+          {env.monthly_target != null && (
+            <button type="button" className="btn btn-sm" onClick={() => setAllocated(String(env.monthly_target))}>
+              היעד · {formatILS(env.monthly_target)}
+            </button>
+          )}
+        </div>
+
+        {average && average.months_observed > 0 && average.months_observed < 3 && (
+          <p className="meta" style={{ marginBottom: 'var(--s4)' }}>
+            הממוצע מבוסס על {average.months_observed === 1 ? 'חודש אחד בלבד' : 'חודשיים בלבד'}.
+            אחרי שלושה חודשי מעקב הוא ייצג את הבית הרבה יותר טוב.
+          </p>
         )}
       </AsyncForm>
     </Sheet>

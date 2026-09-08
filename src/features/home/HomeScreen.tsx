@@ -62,7 +62,9 @@ export function HomeScreen() {
     && soonBills.length === 0
     && (balance.data?.amount ?? 0) === 0;
 
-  const over = (budget.data?.to_be_budgeted ?? 0) < 0;
+  // The same number the budget screen leads with. Two screens that disagree
+  // about what the headline figure is are two screens nobody trusts.
+  const short = (budget.data?.flow.monthly ?? 0) < 0;
 
   return (
     <>
@@ -75,11 +77,22 @@ export function HomeScreen() {
         {budget.data && (
           <Link to="/budget" style={{ textDecoration: 'none', display: 'block' }}>
             <div className="hero">
-              <div className="label">{over ? 'הקצינו יותר ממה שנכנס' : 'ממתין לייעוד'}</div>
-              <div className={`figure ${over ? 'over' : ''}`}>{formatILS(budget.data.to_be_budgeted)}</div>
-              <div className="meta" style={{ marginTop: 'var(--s2)' }}>
-                הוצאנו החודש <span className="n">{formatILS(budget.data.spent)}</span>
+              <div className="label">תזרים החודש</div>
+              <div className={`figure ${short ? 'over' : ''}`}>
+                {formatILS(budget.data.flow.monthly, { sign: true })}
               </div>
+              <div className="meta" style={{ marginTop: 'var(--s2)' }}>
+                נכנס <span className="n">{formatILS(budget.data.flow.income)}</span>
+                {' · הוצא '}<span className="n">{formatILS(budget.data.flow.spent)}</span>
+              </div>
+              {/* Said once, on the screen opened most often. The projection is
+                  the intervention; burying it a tab away wastes it. */}
+              {short && (
+                <div className="meta" style={{ marginTop: 'var(--s2)', color: 'var(--red)' }}>
+                  בקצב הזה — <span className="n">{formatILS(budget.data.flow.yearly)}</span> בשנה,
+                  {' '}<span className="n">{formatILS(budget.data.flow.three_year)}</span> בשלוש
+                </div>
+              )}
             </div>
           </Link>
         )}

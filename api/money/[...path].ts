@@ -3,11 +3,12 @@ import { router, type Ctx } from '../_lib/router.js';
 import { query, one, transaction } from '../_lib/db.js';
 import { badRequest, conflict, notFound } from '../_lib/http.js';
 import { bool, date, int, num, oneOf, optionalDate, optionalInt, optionalNum, optionalStr, str } from '../_lib/validate.js';
-import { advanceDue, buildBudgetMonth, computeBalance, monthKey } from '../../shared/money.js';
+import { advanceDue, buildBudgetMonth, categoryAverages, computeBalance, monthKey } from '../../shared/money.js';
 import type { Account, Category, Transaction } from '../../shared/types.js';
 
 const ACCOUNT_KINDS = ['bank', 'cash', 'credit', 'savings'] as const;
 const CATEGORY_KINDS = ['spending', 'income', 'saving'] as const;
+const COMMITMENTS_IN = ['rigid', 'flexible', 'liquid', 'unplanned'] as const;
 const CADENCES = ['monthly', 'bimonthly', 'quarterly', 'yearly'] as const;
 const SPLITS = ['shared', 'personal'] as const;
 
@@ -65,8 +66,7 @@ async function listCategories(): Promise<Category[]> {
  * the month would produce a screen that is right in January and wrong in every
  * month after it.
  */
-async function getBudget(ctx: Ctx) {
-  const month = monthKey(ctx.query['month'] || new Date());
+async function budgetInputs(month: string) {
   const [categories, allocations, spends] = await Promise.all([
     listCategories(),
     query<{ month: string; category_id: number; allocated: number }>(
@@ -86,7 +86,28 @@ async function getBudget(ctx: Ctx) {
       [month],
     ),
   ]);
+  return { categories, allocations, spends };
+}
+
+async function getBudget(ctx: Ctx) {
+  const month = monthKey(ctx.query['month'] || new Date());
+  const { categories, allocations, spends } = await budgetInputs(month);
   return buildBudgetMonth({ month, categories, allocations, spends });
+}
+
+/**
+ * What each category has actually cost over the months we have.
+ *
+ * The first stage of the method is to map three real months before budgeting
+ * a shekel, because a target invented from nothing is a wish rather than a
+ * plan. Every transaction is already here, so the mapping that the method
+ * asks a household to do by hand is arithmetic we can just do.
+ */
+async function getAverages(ctx: Ctx) {
+  const month = monthKey(ctx.query['month'] || new Date());
+  const lookback = Math.min(Math.max(Number(ctx.query['months'] ?? 3) || 3, 1), 12);
+  const { categories, spends } = await budgetInputs(month);
+  return categoryAverages({ month, categories, spends, lookback });
 }
 
 /** Put money in one envelope for one month. Idempotent — it sets, never adds. */
@@ -374,13 +395,14 @@ export default router([
   {
     method: 'POST', path: 'categories',
     handle: async (ctx) => one<Category>(
-      `INSERT INTO categories (group_id, name, kind, monthly_target, icon, sort_order)
-       VALUES ($1, $2, $3, $4, $5, COALESCE((SELECT MAX(sort_order) + 1 FROM categories WHERE group_id IS NOT DISTINCT FROM $1), 0))
+      `INSERT INTO categories (group_id, name, kind, commitment, monthly_target, icon, sort_order)
+       VALUES ($1, $2, $3, $4, $5, $6, COALESCE((SELECT MAX(sort_order) + 1 FROM categories WHERE group_id IS NOT DISTINCT FROM $1), 0))
        RETURNING *, (SELECT name FROM category_groups WHERE id = $1) AS group_name`,
       [
         optionalInt(ctx.body['group_id'], 'קבוצה'),
         str(ctx.body['name'], 'שם הקטגוריה', { max: 80 }),
         oneOf(ctx.body['kind'], 'סוג', CATEGORY_KINDS, 'spending'),
+        oneOf(ctx.body['commitment'], 'רמת מחויבות', COMMITMENTS_IN, 'flexible'),
         optionalNum(ctx.body['monthly_target'], 'יעד חודשי'),
         optionalStr(ctx.body['icon'], 'אייקון', 20),
       ],
@@ -392,6 +414,7 @@ export default router([
       const row = await one<Category>(
         `UPDATE categories
             SET name = COALESCE($2, name), group_id = COALESCE($3, group_id),
+                commitment = COALESCE($8, commitment),
                 monthly_target = CASE WHEN $4::text = 'clear' THEN NULL ELSE COALESCE($5, monthly_target) END,
                 icon = COALESCE($6, icon),
                 archived_at = CASE WHEN $7::boolean IS TRUE THEN NOW() WHEN $7::boolean IS FALSE THEN NULL ELSE archived_at END
@@ -404,6 +427,7 @@ export default router([
           optionalNum(ctx.body['monthly_target'], 'יעד חודשי'),
           optionalStr(ctx.body['icon'], 'אייקון', 20),
           ctx.body['archived'] === undefined ? null : bool(ctx.body['archived']),
+          ctx.body['commitment'] ? oneOf(ctx.body['commitment'], 'רמת מחויבות', COMMITMENTS_IN) : null,
         ],
       );
       if (!row) throw notFound('הקטגוריה לא נמצאה');
@@ -426,6 +450,7 @@ export default router([
   },
 
   { method: 'GET', path: 'budget', role: 'viewer', handle: getBudget },
+  { method: 'GET', path: 'averages', role: 'viewer', handle: getAverages },
   { method: 'PUT', path: 'budget/:categoryId', handle: setAllocation },
   { method: 'POST', path: 'budget/autofill', handle: autofillMonth },
 

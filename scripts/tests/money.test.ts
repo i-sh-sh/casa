@@ -1,14 +1,26 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  advanceDue, buildBudgetMonth, computeBalance, formatILS,
-  monthKey, nextMonth, previousMonth, round2,
+  advanceDue, buildBudgetMonth, cashFlow, categoryAverages, commitmentBreakdown,
+  computeBalance, formatILS, monthKey, nextMonth, previousMonth, round2, unplannedCheck,
+  UNPLANNED_FLOOR,
 } from '../../shared/money.ts';
-import type { Category } from '../../shared/types.ts';
+import type { Category, Commitment, EnvelopeRow } from '../../shared/types.ts';
 
-const cat = (id: number, name: string, kind: Category['kind'] = 'spending'): Category => ({
-  id, group_id: 1, group_name: 'קבוצה', name, kind,
+const cat = (
+  id: number,
+  name: string,
+  kind: Category['kind'] = 'spending',
+  commitment: Commitment = 'flexible',
+): Category => ({
+  id, group_id: 1, group_name: 'קבוצה', name, kind, commitment,
   monthly_target: null, icon: null, sort_order: 0, archived_at: null,
+});
+
+const env = (commitment: Commitment, allocated: number, spent = 0): EnvelopeRow => ({
+  category_id: Math.random(), category_name: 'x', group_id: 1, group_name: 'g',
+  kind: 'spending', commitment, icon: null, allocated, spent,
+  available: allocated - spent, monthly_target: null,
 });
 
 // ── Arithmetic ───────────────────────────────────────────────────────────
@@ -157,6 +169,167 @@ test('archived categories drop out of the month', () => {
     spends: [],
   });
   assert.deepEqual(result.envelopes.map((e) => e.category_name), ['סופר']);
+});
+
+// ── Cash flow, said out loud ─────────────────────────────────────────────
+
+test('the deficit is projected forward — the whole point of the exercise', () => {
+  // Straight from the worked example: ₪8,500 in, ₪9,700 out. A household
+  // shrugs at ₪1,200 short and does not shrug at ₪43,200 over three years.
+  const flow = cashFlow(8500, 9700);
+  assert.equal(flow.monthly, -1200);
+  assert.equal(flow.yearly, -14400);
+  assert.equal(flow.three_year, -43200);
+});
+
+test('a surplus is never multiplied out', () => {
+  // The same arithmetic used dishonestly: ×36 on a good month promises
+  // ₪43,200 of savings that nothing guarantees. The projection exists to warn,
+  // not to flatter.
+  const flow = cashFlow(8500, 8450);
+  assert.equal(flow.monthly, 50);
+  assert.equal(flow.yearly, 0);
+  assert.equal(flow.three_year, 0);
+});
+
+test('a month that exactly covers itself projects nothing', () => {
+  const flow = cashFlow(8500, 8500);
+  assert.equal(flow.monthly, 0);
+  assert.equal(flow.three_year, 0);
+});
+
+// ── The ladder ───────────────────────────────────────────────────────────
+
+test('the month is split by how much of it could actually be moved', () => {
+  const slices = commitmentBreakdown([
+    env('rigid', 3570), env('flexible', 3500), env('liquid', 1450), env('unplanned', 480),
+  ]);
+  assert.deepEqual(slices.map((s) => s.commitment), ['rigid', 'flexible', 'liquid', 'unplanned'],
+    'the ladder always reads from least control to most');
+  const byName = Object.fromEntries(slices.map((s) => [s.commitment, s]));
+  assert.equal(byName['rigid']!.allocated, 3570);
+  assert.equal(byName['liquid']!.share, 0.16, '₪1,450 of ₪9,000 is the part a month can actually be saved from');
+});
+
+test('an unbudgeted month is an empty ladder, not NaN', () => {
+  const slices = commitmentBreakdown([env('rigid', 0), env('liquid', 0)]);
+  assert.deepEqual(slices.map((s) => s.share), [0, 0, 0, 0]);
+});
+
+// ── The 5% floor ─────────────────────────────────────────────────────────
+
+test('too little set aside for the unforeseen is named, with the gap', () => {
+  const check = unplannedCheck([env('rigid', 9000), env('unplanned', 200)]);
+  assert.equal(check.meets_floor, false);
+  assert.equal(check.floor, UNPLANNED_FLOOR);
+  assert.equal(check.shortfall, 260, '5% of ₪9,200 is ₪460, and ₪200 is set aside');
+});
+
+test('exactly the floor passes', () => {
+  const check = unplannedCheck([env('rigid', 9500), env('unplanned', 500)]);
+  assert.equal(check.share, 0.05);
+  assert.equal(check.meets_floor, true);
+  assert.equal(check.shortfall, 0);
+});
+
+test('a month nobody has budgeted yet is not nagged', () => {
+  // Warning before the first allocation teaches people to ignore the warning
+  // that matters later.
+  const check = unplannedCheck([env('rigid', 0), env('liquid', 0)]);
+  assert.equal(check.meets_floor, true);
+  assert.equal(check.shortfall, 0);
+});
+
+// ── Three real months, not a guess ───────────────────────────────────────
+
+test('a category average comes from what was actually spent', () => {
+  const categories = [cat(1, 'סופר'), cat(2, 'מסעדות')];
+  const averages = categoryAverages({
+    month: '2026-04-01',
+    categories,
+    spends: [
+      { month: '2026-01-01', category_id: 1, amount: -1000 },
+      { month: '2026-02-01', category_id: 1, amount: -1400 },
+      { month: '2026-03-01', category_id: 1, amount: -1200 },
+      { month: '2026-03-01', category_id: 2, amount: -600 },
+    ],
+  });
+  const byId = Object.fromEntries(averages.map((a) => [a.category_id, a]));
+  assert.equal(byId[1]!.average, 1200);
+  assert.equal(byId[2]!.average, 200, 'one ₪600 month across three months is ₪200 a month');
+  assert.equal(byId[1]!.months_observed, 3);
+});
+
+test('the current month is never counted — it is not over yet', () => {
+  const averages = categoryAverages({
+    month: '2026-04-01',
+    categories: [cat(1, 'סופר')],
+    spends: [
+      { month: '2026-04-01', category_id: 1, amount: -9999 },
+      { month: '2026-03-01', category_id: 1, amount: -300 },
+    ],
+  });
+  assert.equal(averages[0]!.average, 300);
+  assert.equal(averages[0]!.months_observed, 1);
+});
+
+test('two months of history divide by two, and say so', () => {
+  // Dividing a young household's spending by a flat three understates every
+  // average by a third, and it would under-budget on the strength of it.
+  const averages = categoryAverages({
+    month: '2026-04-01',
+    categories: [cat(1, 'סופר')],
+    spends: [
+      { month: '2026-02-01', category_id: 1, amount: -1000 },
+      { month: '2026-03-01', category_id: 1, amount: -1400 },
+    ],
+  });
+  assert.equal(averages[0]!.average, 1200);
+  assert.equal(averages[0]!.months_observed, 2);
+});
+
+test('income and refunds do not become an expense average', () => {
+  const averages = categoryAverages({
+    month: '2026-04-01',
+    categories: [cat(1, 'סופר'), cat(9, 'משכורת', 'income')],
+    spends: [
+      { month: '2026-03-01', category_id: 9, amount: 12000 },
+      { month: '2026-03-01', category_id: 1, amount: -900 },
+      { month: '2026-03-01', category_id: 1, amount: 300 },
+    ],
+  });
+  assert.equal(averages.length, 1, 'income categories have no spending average');
+  // Only March carried activity, so the divisor is one month, not three:
+  // ₪900 spent less a ₪300 refund is ₪600 for the one month observed.
+  assert.equal(averages[0]!.average, 600, 'the ₪300 refund comes off the ₪900');
+  assert.equal(averages[0]!.months_observed, 1);
+});
+
+// ── The budget month carries all of it ───────────────────────────────────
+
+test('a month reports its flow, its ladder and its cushion together', () => {
+  const result = buildBudgetMonth({
+    month: '2026-03-01',
+    categories: [
+      cat(1, 'שכר דירה', 'spending', 'rigid'),
+      cat(2, 'מסעדות', 'spending', 'liquid'),
+      cat(9, 'משכורת', 'income'),
+    ],
+    allocations: [
+      { month: '2026-03-01', category_id: 1, allocated: 5000 },
+      { month: '2026-03-01', category_id: 2, allocated: 500 },
+    ],
+    spends: [
+      { month: '2026-03-01', category_id: 9, amount: 8500 },
+      { month: '2026-03-01', category_id: 1, amount: -5000 },
+      { month: '2026-03-01', category_id: 2, amount: -4700 },
+    ],
+  });
+  assert.equal(result.flow.monthly, -1200);
+  assert.equal(result.flow.three_year, -43200);
+  assert.equal(result.unplanned.meets_floor, false, 'nothing is set aside for the unforeseen');
+  const rigid = result.commitments.find((c) => c.commitment === 'rigid');
+  assert.equal(rigid?.allocated, 5000);
 });
 
 // ── Who owes whom ────────────────────────────────────────────────────────

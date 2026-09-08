@@ -16,6 +16,27 @@ export interface User {
 
 export type AccountKind = 'bank' | 'cash' | 'credit' | 'savings';
 export type CategoryKind = 'spending' | 'income' | 'saving';
+
+/**
+ * How much control we have over an expense — the ladder, from least to most.
+ *
+ * This is a different axis from `kind`, and the more useful one. `kind` says
+ * what an amount is; `commitment` says what could be done about it, which is
+ * the only question worth asking when a month does not add up. "Cut spending"
+ * is not advice; "of your ₪9,700, ₪3,570 is rigid and ₪1,450 is liquid" is.
+ *
+ *   rigid     קשיחות     — rent, ארנונה, insurance, loan repayments.
+ *                          Fixed, or hard enough to change that this month
+ *                          they may as well be.
+ *   flexible  גמישות     — electricity, water, groceries, fuel. You must pay
+ *                          something; how much is partly yours to decide.
+ *   liquid    נזילות     — clothes, restaurants, culture, gifts. Entirely a
+ *                          decision. This is where a month is actually saved.
+ *   unplanned לא צפויות  — a wedding, a dentist, a broken phone. Not knowing
+ *                          what it will be is not a reason to budget nothing
+ *                          for it; it is the reason to budget for it.
+ */
+export type Commitment = 'rigid' | 'flexible' | 'liquid' | 'unplanned';
 export type Split = 'shared' | 'personal';
 export type Cadence = 'monthly' | 'bimonthly' | 'quarterly' | 'yearly';
 
@@ -44,6 +65,7 @@ export interface Category {
   group_name: string | null;
   name: string;
   kind: CategoryKind;
+  commitment: Commitment;
   monthly_target: number | null;
   icon: string | null;
   sort_order: number;
@@ -75,6 +97,7 @@ export interface EnvelopeRow {
   group_id: number | null;
   group_name: string | null;
   kind: CategoryKind;
+  commitment: Commitment;
   icon: string | null;
   /** What we put in this envelope this month. */
   allocated: number;
@@ -93,6 +116,65 @@ export interface BudgetMonth {
   spent: number;
   /** Income to date minus everything ever allocated. Negative = we over-promised. */
   to_be_budgeted: number;
+  /** This month's income minus this month's spending, and what that becomes if nothing changes. */
+  flow: CashFlow;
+  /** The month split by how much control we have over it. */
+  commitments: CommitmentSlice[];
+  /** Whether enough is set aside for the things we cannot see coming. */
+  unplanned: UnplannedCheck;
+}
+
+/**
+ * The number the whole method turns on.
+ *
+ * A deficit stated per month is a number people shrug at; the same deficit
+ * stated as what it becomes over a year and three years is the one that
+ * changes behaviour. That projection is the point — not a forecast, just the
+ * same arithmetic said out loud.
+ */
+export interface CashFlow {
+  income: number;
+  spent: number;
+  /** income − spent. Negative means the month did not cover itself. */
+  monthly: number;
+  /** monthly × 12 and × 36, only meaningful while nothing changes. */
+  yearly: number;
+  three_year: number;
+}
+
+export interface CommitmentSlice {
+  commitment: Commitment;
+  allocated: number;
+  spent: number;
+  /** This slice's share of everything allocated, 0–1. */
+  share: number;
+}
+
+export interface UnplannedCheck {
+  allocated: number;
+  /** Share of the month's allocation set aside for the unforeseen, 0–1. */
+  share: number;
+  /** The floor the method recommends: 5%. */
+  floor: number;
+  meets_floor: boolean;
+  /** What would have to be added to reach the floor. 0 when it is already met. */
+  shortfall: number;
+}
+
+/**
+ * What a category actually costs, averaged over the months we have.
+ *
+ * The method's first stage is to map three real months before budgeting a
+ * single shekel, because a target invented from nothing is a wish. We already
+ * hold every transaction, so this is arithmetic rather than homework —
+ * `months_observed` is carried so a one-month average can say so instead of
+ * pretending to be three.
+ */
+export interface CategoryAverage {
+  category_id: number;
+  category_name: string;
+  average: number;
+  months_observed: number;
 }
 
 export interface RecurringBill {
