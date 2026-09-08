@@ -3,6 +3,7 @@ import {
   type ReactNode, type FormEvent,
 } from 'react';
 import { Icon } from './Icon.js';
+import { markBusy } from '../lib/version.js';
 
 // ── Sheet ────────────────────────────────────────────────────────────────
 
@@ -22,9 +23,14 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     panel.current?.focus();
+    // An open sheet is a half-finished action — a form with an amount already
+    // typed into it. A background update must wait for it to close rather
+    // than reload the page out from under it.
+    const release = markBusy();
     return () => {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previous;
+      release();
     };
   }, [onClose]);
 
@@ -186,11 +192,13 @@ export function AsyncForm({ onSubmit, submitLabel, children, disabled }: {
     if (busy) return;
     setBusy(true);
     setError(null);
+    const release = markBusy();
     try {
       await onSubmit();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'משהו השתבש');
     } finally {
+      release();
       setBusy(false);
     }
   };
