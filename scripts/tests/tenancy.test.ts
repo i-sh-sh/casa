@@ -267,3 +267,21 @@ test('an isolation failure reaches the screen instead of becoming a generic 500'
     'the isolation check must be tested before the schema check',
   );
 });
+
+test('the isolation failure tells the truth about what fixes it', () => {
+  // The first version of this message said "or re-run the migration", which is
+  // false and cost a real evening: the migration creates the policies correctly
+  // every time, and a BYPASSRLS role ignores them every time. An error message
+  // that suggests a remedy which cannot work is worse than one that suggests
+  // none.
+  const db = readFileSync(join(root, 'api/_lib/db.ts'), 'utf-8');
+  const message = db.slice(db.indexOf('ההפרדה בין בתים לא פעילה'), db.indexOf('ההפרדה בין בתים לא פעילה') + 900);
+  assert.match(message, /לא תעזור/, 'the message must say that re-running the migration will not help');
+  assert.match(message, /BYPASSRLS/);
+  assert.match(message, /docs\/NEON\.md/, 'the message must point at the tested procedure');
+
+  // And the procedure has to exist, with the command that actually fixed it.
+  const neon = readFileSync(join(root, 'docs/NEON.md'), 'utf-8');
+  assert.match(neon, /NOSUPERUSER NOBYPASSRLS/);
+  assert.match(neon, /REASSIGN OWNED BY neondb_owner TO casa_app/);
+});
