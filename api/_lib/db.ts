@@ -230,9 +230,40 @@ export async function transaction<T>(fn: (client: pg.PoolClient) => Promise<T>):
  */
 export function describeDbError(err: unknown): string | null {
   const code = (err as { code?: string } | null)?.code;
-  if (code !== '42703' && code !== '42P01') return null;
-  const what = code === '42703' ? 'עמודה' : 'טבלה';
-  return `מסד הנתונים לא מעודכן לגרסה הזו — חסרה ${what} שהקוד מצפה לה. `
-    + 'הריצו את המיגרציה: «הגדרות» ← «מסד הנתונים» ← «הרץ מיגרציה». '
-    + 'ההרצה בטוחה לחזור עליה ולא מוחקת שום נתון.';
+
+  // The schema is behind the code. Somebody has to press the button.
+  if (code === '42703' || code === '42P01') {
+    const what = code === '42703' ? 'עמודה' : 'טבלה';
+    return `מסד הנתונים לא מעודכן לגרסה הזו — חסרה ${what} שהקוד מצפה לה. `
+      + 'הריצו את המיגרציה: «הגדרות» ← «מסד הנתונים» ← «הרץ מיגרציה». '
+      + 'ההרצה בטוחה לחזור עליה ולא מוחקת שום נתון.';
+  }
+
+  // The connection itself. Every one of these means DATABASE_URL is wrong in a
+  // specific, nameable way — and every one of them used to arrive as the same
+  // flat «שגיאת שרת», which is how an afternoon goes: the message that could
+  // have ended it in one sentence was thrown away one line before the response.
+  if (code === '28P01' || code === '28000') {
+    return 'המסד דחה את שם המשתמש או הסיסמה שב-DATABASE_URL. '
+      + 'בדקו שהחלפתם את שניהם, ושאין רווח או תו שנחתך בהעתקה. '
+      + 'אפשר לקבוע סיסמה חדשה: ALTER ROLE casa_app PASSWORD ... — ראו docs/NEON.md.';
+  }
+  if (code === '42501') {
+    return 'המסד התחבר, אבל לתפקיד אין הרשאה על הטבלאות. '
+      + 'כנראה רץ רק CREATE ROLE בלי REASSIGN OWNED ו-GRANT. '
+      + 'הפקודות המלאות ב-docs/NEON.md, שלב 2.';
+  }
+  if (code === '3D000') {
+    return 'שם מסד הנתונים ב-DATABASE_URL לא קיים בשרת. '
+      + 'זה החלק שאחרי הלוכסן האחרון בכתובת.';
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return 'לא הצלחנו למצוא את השרת שב-DATABASE_URL. '
+      + 'בדקו את שם המארח — הוא החלק שבין @ לבין הלוכסן, וחייב להישאר עם -pooler.';
+  }
+  if (code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'ECONNRESET') {
+    return 'השרת של מסד הנתונים לא ענה. אם זה נמשך — בדקו ב-Neon שהפרויקט פעיל.';
+  }
+
+  return null;
 }
