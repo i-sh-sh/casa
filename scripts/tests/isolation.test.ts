@@ -1,4 +1,4 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -30,6 +30,18 @@ const URL = process.env['CASA_TEST_DATABASE_URL'];
 const root = resolve(process.cwd());
 
 const options = { skip: URL ? false : 'set CASA_TEST_DATABASE_URL to a throwaway database' };
+
+/**
+ * The pool in api/_lib/db.ts is a module singleton, shared by every test here.
+ * Closing it inside one test leaves the next with a dead pool — whose errors
+ * carry no Postgres code, which once made a check pass for the wrong reason. It
+ * is closed exactly once, when the file is done.
+ */
+after(async () => {
+  if (!URL) return;
+  const db = await import('../../api/_lib/db.ts');
+  await db.getPool().end().catch(() => { /* never opened */ });
+});
 
 async function freshDatabase(): Promise<pg.Client> {
   const client = new pg.Client({ connectionString: URL });
@@ -322,8 +334,6 @@ test('the real db layer carries the household through AsyncLocalStorage', option
   // Outside any scope, the same helpers read nothing.
   assert.deepEqual(await db.query(`SELECT name FROM accounts`), []);
 
-  // The pool is a module singleton shared with the test below, so it is closed
-  // once, at the end of the file — not here.
 });
 
 test('the upgrade path works on a database that predates households', options, async () => {
@@ -372,5 +382,72 @@ test('the upgrade path works on a database that predates households', options, a
     `SELECT email, role FROM household_members`);
   assert.deepEqual(members, [{ email: 'owner@example.com', role: 'owner' }]);
 
-  await db.getPool().end();
+});
+
+test('the export carries one household only, and reads as Hebrew', options, async () => {
+  // The export is the promise «הנתונים שלכם, ואפשר לקחת אותם». An export that
+  // quietly carried a neighbour's transactions would break the pilot on its
+  // most sensitive surface — a file a person can forward to anyone.
+  process.env['DATABASE_URL'] = URL;
+  const db = await import('../../api/_lib/db.ts');
+  // The sheet definitions, not the handler: files under api/ import each other
+  // with `.js` specifiers that Node's type-stripping cannot resolve, which is
+  // why the definitions live in shared/ in the first place.
+  const { SHEETS, findSheet, BACKUP_TABLES } = await import('../../shared/export-sheets.ts');
+  const { toCsv } = await import('../../shared/csv.ts');
+  const exportSheet = async (name: string) => ({
+    csv: toCsv(await db.query(findSheet(name)!.sql), findSheet(name)!.columns),
+  });
+
+  const client = await freshDatabase();
+  try {
+    await twoHomes(client);
+    // twoHomes already gave household 1 a רמי לוי row; this one has a payee
+    // that appears nowhere else, so the assertions below are about isolation
+    // rather than about the fixture.
+    await asHousehold(client, 1, () => client.query(
+      `INSERT INTO transactions (occurred_on, account_id, amount, payee)
+       SELECT '2026-09-03', id, -243.90, 'מאפיית לחם ארז' FROM accounts`));
+    await asHousehold(client, 2, () => client.query(
+      `INSERT INTO transactions (occurred_on, account_id, amount, payee)
+       SELECT '2026-09-04', id, -999.00, 'סוד של בית ב' FROM accounts`));
+  } finally {
+    await client.end();
+  }
+
+  const first = await db.withHousehold(1, () => exportSheet('transactions'));
+  assert.ok(first.csv.includes('מאפיית לחם ארז'), 'the household’s own row is missing');
+  assert.ok(!first.csv.includes('סוד של בית ב'), 'the export leaked another household');
+  assert.ok(first.csv.startsWith('﻿'), 'no BOM — Excel would mangle the Hebrew');
+  assert.ok(first.csv.includes('תאריך,סכום,בית עסק'), 'the header is not in Hebrew');
+  // Column headers are names rather than ids, because the person opening this
+  // in Excel cannot join to another table.
+  assert.ok(first.csv.includes('עובר ושב א'), 'the account name was not joined in');
+
+  const second = await db.withHousehold(2, () => exportSheet('transactions'));
+  assert.ok(second.csv.includes('סוד של בית ב'));
+  assert.ok(!second.csv.includes('מאפיית לחם ארז'));
+
+  // Every sheet, not just the one with the interesting join.
+  for (const sheet of ['budget', 'accounts', 'pantry', 'shopping', 'bills']) {
+    const out = await db.withHousehold(1, () => exportSheet(sheet));
+    assert.ok(!out.csv.includes('סוד של בית ב'), `${sheet} leaked another household`);
+    assert.ok(out.csv.startsWith('﻿'), `${sheet} has no BOM`);
+  }
+
+  // And the full backup, which is the one that keeps raw rows.
+  const backup = await db.withHousehold(1, async () => {
+    const raw: Record<string, { payee?: string }[]> = {};
+    for (const table of BACKUP_TABLES) raw[table] = await db.query(`SELECT * FROM ${table}`);
+    return raw;
+  });
+  const payees = backup['transactions']!.map((t) => t.payee).sort();
+  assert.deepEqual(payees, ['מאפיית לחם ארז', 'רמי לוי'], 'the backup leaked another household');
+
+  // Every sheet the UI offers must actually run. A renamed column fails here
+  // rather than as an empty download three weeks into the pilot.
+  for (const sheet of SHEETS) {
+    await db.withHousehold(1, () => db.query(sheet.sql));
+  }
+
 });

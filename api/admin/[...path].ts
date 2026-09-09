@@ -4,6 +4,8 @@ import { badRequest, forbidden, notFound, HttpError } from '../_lib/http.js';
 import { oneOf, optionalStr, str } from '../_lib/validate.js';
 import { SCHEMA_SQL } from '../../db/schema.js';
 import { SEED_SQL } from './_seed.js';
+import { exportEverything, exportSheet, SHEET_NAMES } from './_export.js';
+import { exportFilename } from '../../shared/csv.js';
 import type { Role } from '../_lib/auth.js';
 
 const ROLES = ['owner', 'member', 'viewer', 'pending'] as const;
@@ -139,10 +141,36 @@ async function setUserRole(ctx: Ctx) {
   return { ...row, role };
 }
 
+/**
+ * A CSV download, written straight to the response.
+ *
+ * Not JSON that the client turns into a file: the browser's own download —
+ * with the filename in a Content-Disposition header — is what puts it in the
+ * Downloads folder where a person expects to find it, and what works when the
+ * file is bigger than a phone wants to hold in memory.
+ */
+async function downloadSheet(ctx: Ctx) {
+  const { filename, csv } = await exportSheet(ctx.query['sheet'] ?? 'transactions');
+  ctx.res.status(200);
+  ctx.res.setHeader('content-type', 'text/csv; charset=utf-8');
+  ctx.res.setHeader('content-disposition', `attachment; filename="${exportFilename(filename)}"`);
+  // No caching anywhere: this is one household's complete financial history,
+  // and a CDN is the last place it should be able to rest.
+  ctx.res.setHeader('cache-control', 'no-store, private');
+  ctx.res.send(csv);
+}
+
 export default router([
   { method: 'POST', path: 'migrate', bootstrap: true, handle: migrate },
   { method: 'POST', path: 'seed', role: 'owner', handle: seed },
   { method: 'GET', path: 'users', role: 'owner', unscoped: true, handle: listUsers },
+
+  // Viewer, not owner. «הנתונים שלכם, ואתם צריכים לדעת שאפשר לקחת אותם» is a
+  // promise to everyone in the household, and a person who can read every
+  // number on screen is not protected by being unable to download them.
+  { method: 'GET', path: 'export', role: 'viewer', handle: downloadSheet },
+  { method: 'GET', path: 'export/sheets', role: 'viewer', handle: async () => SHEET_NAMES },
+  { method: 'GET', path: 'export/all', role: 'owner', handle: exportEverything },
   { method: 'PATCH', path: 'users', role: 'owner', handle: setUserRole },
   { method: 'PATCH', path: 'users/:email', role: 'owner', handle: setUserRole },
   {

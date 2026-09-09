@@ -69,6 +69,8 @@ export function SettingsScreen() {
 
         {user && <HouseholdSwitcher households={households} current={user.household_id ?? 0} />}
 
+        <ExportSection isOwner={isOwner} />
+
         {isOwner && <MembersSection currentEmail={user.email} />}
         {isOwner && <InviteSection />}
         {isOwner && <DatabaseSection />}
@@ -238,6 +240,47 @@ function MembersSection({ currentEmail }: { currentEmail: string }) {
       </div>
       <p className="meta" style={{ marginTop: 'var(--s2)' }}>
         «ממתין לאישור» רואה מסך המתנה בלבד. «צופה» רואה הכול ולא משנה כלום.
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Taking the data out.
+ *
+ * Plain links, not fetch-then-build-a-blob. The browser's own download is what
+ * puts the file where a person expects to find it, carries the session cookie
+ * without any work, and does not need the whole export in the page's memory —
+ * which on a phone, with three years of transactions, is the difference between
+ * a file and a crash.
+ *
+ * Shown to everyone in the household, not only the owner: «הנתונים שלנו, ואנחנו
+ * צריכים לדעת שאפשר לקחת אותם» is a promise to both people, and someone who can
+ * read every number on screen is not protected by being unable to download them.
+ */
+function ExportSection({ isOwner }: { isOwner: boolean }) {
+  const sheets = useAsync(() => api.get<{ name: string; label: string }[]>('/admin/export/sheets'));
+
+  return (
+    <section className="section">
+      <h2>הנתונים שלכם</h2>
+      <div className="rows">
+        {(sheets.data ?? []).map((sheet) => (
+          <div className="row" key={sheet.name} style={{ minHeight: 44 }}>
+            <span className="grow title">{sheet.label}</span>
+            <a className="btn btn-sm" href={`/api/admin/export?sheet=${sheet.name}`}>CSV</a>
+          </div>
+        ))}
+        {sheets.loading && <Loading />}
+      </div>
+      {isOwner && (
+        <a className="btn btn-block btn-sm" style={{ marginTop: 'var(--s3)' }} href="/api/admin/export/all">
+          גיבוי מלא · JSON
+        </a>
+      )}
+      <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+        הקבצים נפתחים באקסל ובגיליונות של גוגל, בעברית. הגיבוי המלא שומר גם את מה
+        שהקבצים הקריאים משמיטים — הוא לשחזור, לא לקריאה.
       </p>
     </section>
   );
