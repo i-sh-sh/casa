@@ -74,12 +74,11 @@ async function seed() {
   if ((existing?.count ?? 0) > 0) {
     throw badRequest('כבר יש קטגוריות במערכת — הזריעה רצה רק על מסד ריק');
   }
-  const client = await getPool().connect();
-  try {
-    await client.query(SEED_SQL);
-  } finally {
-    client.release();
-  }
+  // Deliberately NOT its own connection. Taking one from the pool would land
+  // on a connection with no `casa.household_id`, where household_id defaults to
+  // NULL and every insert fails the NOT NULL — or, worse on a future schema,
+  // succeeds into nobody's home. `query` uses the request's scoped client.
+  await query(SEED_SQL);
   const [groups, categories, products] = await Promise.all([
     one<{ count: number }>(`SELECT COUNT(*)::int AS count FROM category_groups`),
     one<{ count: number }>(`SELECT COUNT(*)::int AS count FROM categories`),
@@ -88,10 +87,23 @@ async function seed() {
   return { ok: true, groups: groups?.count ?? 0, categories: categories?.count ?? 0, products: products?.count ?? 0 };
 }
 
-async function listUsers() {
+/**
+ * Who is in *this* home.
+ *
+ * Scoped by hand against `household_members`, which is one of the three tables
+ * outside row-level security — so the `WHERE m.household_id` below is the only
+ * thing standing between this and another couple's roster. It is here rather
+ * than in a module router for that reason: the hand-scoped queries are meant to
+ * be few and findable.
+ */
+async function listUsers(ctx: Ctx) {
   return query(
-    `SELECT email, name, display_name, picture, role, color, created_at, last_seen_at
-       FROM users ORDER BY CASE role WHEN 'pending' THEN 0 ELSE 1 END, created_at`,
+    `SELECT u.email, u.name, u.display_name, u.picture, u.color, m.role, m.joined_at
+       FROM household_members m
+       JOIN users u ON u.email = m.email
+      WHERE m.household_id = $1
+      ORDER BY CASE m.role WHEN 'pending' THEN 0 ELSE 1 END, m.joined_at`,
+    [ctx.user.household_id],
   );
 }
 
@@ -102,41 +114,67 @@ async function setUserRole(ctx: Ctx) {
   if (email === ctx.user.email && role !== 'owner') {
     // Demoting yourself out of the only owner seat locks the household out of
     // its own budget with no way back in but a psql console.
-    const owners = await one<{ count: number }>(`SELECT COUNT(*)::int AS count FROM users WHERE role = 'owner'`);
+    const owners = await one<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM household_members WHERE household_id = $1 AND role = 'owner'`,
+      [ctx.user.household_id],
+    );
     if ((owners?.count ?? 0) <= 1) throw forbidden('אתם בעל הבית היחיד — קדמו מישהו אחר לפני שתורידו את עצמכם');
   }
 
-  const row = await one(
-    `UPDATE users SET role = $2, display_name = COALESCE($3, display_name), color = COALESCE($4, color)
-      WHERE email = $1 RETURNING email, name, display_name, role, color`,
-    [email, role, optionalStr(ctx.body['display_name'], 'שם תצוגה', 60), optionalStr(ctx.body['color'], 'צבע', 20)],
+  // Two statements, because they change two different things: the role belongs
+  // to this membership, the display name and colour belong to the person.
+  const membership = await one(
+    `UPDATE household_members SET role = $3
+      WHERE household_id = $1 AND email = $2
+      RETURNING email, role`,
+    [ctx.user.household_id, email, role],
   );
-  if (!row) throw notFound('המשתמש לא נמצא');
-  return row;
+  if (!membership) throw notFound('המשתמש לא נמצא בבית הזה');
+
+  const row = await one(
+    `UPDATE users SET display_name = COALESCE($2, display_name), color = COALESCE($3, color)
+      WHERE email = $1 RETURNING email, name, display_name, color`,
+    [email, optionalStr(ctx.body['display_name'], 'שם תצוגה', 60), optionalStr(ctx.body['color'], 'צבע', 20)],
+  );
+  return { ...row, role };
 }
 
 export default router([
-  { method: 'POST', path: 'migrate', role: 'owner', handle: migrate },
+  { method: 'POST', path: 'migrate', bootstrap: true, handle: migrate },
   { method: 'POST', path: 'seed', role: 'owner', handle: seed },
-  { method: 'GET', path: 'users', role: 'owner', handle: listUsers },
+  { method: 'GET', path: 'users', role: 'owner', unscoped: true, handle: listUsers },
   { method: 'PATCH', path: 'users', role: 'owner', handle: setUserRole },
   { method: 'PATCH', path: 'users/:email', role: 'owner', handle: setUserRole },
   {
-    method: 'GET', path: 'health', role: 'viewer',
+    method: 'GET', path: 'health', bootstrap: true,
     handle: async () => {
       const tables = await query<{ table_name: string }>(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`,
       );
       const names = tables.map((t) => t.table_name);
       const expected = [
-        'users', 'accounts', 'category_groups', 'categories', 'budget_allocations',
+        'users', 'households', 'household_members', 'household_invites',
+        'accounts', 'category_groups', 'categories', 'budget_allocations',
         'transactions', 'recurring_bills', 'settlements', 'products', 'stock_entries',
         'stock_log', 'shopping_items', 'push_subscriptions', 'sent_notifications',
       ];
       const missing = expected.filter((t) => !names.includes(t));
+
+      // Whether the separation between homes is actually being enforced, as
+      // opposed to merely configured. See proveIsolation in _lib/db.ts: for a
+      // superuser or a BYPASSRLS role every policy is listed and none applies,
+      // and the only symptom would be one household reading another's money.
+      const isolation = await one<{ active: boolean; unsafe_role: boolean }>(
+        `SELECT row_security_active('accounts') AS active,
+                (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user) AS unsafe_role`,
+      ).catch(() => null);
+
       return {
         ok: missing.length === 0,
         missing,
+        isolation: isolation
+          ? { enforced: !!isolation.active && !isolation.unsafe_role, unsafe_role: !!isolation.unsafe_role }
+          : null,
         hint: missing.length ? 'הריצו מיגרציה: «הגדרות» ← «מסד הנתונים»' : null,
       };
     },

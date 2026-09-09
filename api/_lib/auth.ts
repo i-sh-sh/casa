@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { OAuth2Client } from 'google-auth-library';
-import { one, query } from './db.js';
+import { one, query, transaction } from './db.js';
 import { forbidden, unauthorized } from './http.js';
 
 // Sign-in is Google-only. There is no shared password anywhere in this file,
@@ -14,6 +14,9 @@ const JWT_SECRET = process.env.JWT_SECRET ?? '';
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? '';
 const SESSION_DAYS = 30;
 export const SESSION_COOKIE = 'casa_session';
+// Which home to act in, for a person who belongs to more than one. A
+// preference, not a permission — see pickHousehold.
+export const HOUSEHOLD_COOKIE = 'casa_household';
 
 export type Role = 'owner' | 'member' | 'viewer' | 'pending';
 
@@ -21,9 +24,22 @@ export interface SessionUser {
   email: string;
   name: string | null;
   picture: string | null;
-  role: Role;
   display_name: string | null;
   color: string | null;
+  /** The home this request is acting in, and the role held *there*. */
+  household_id: number;
+  household_name: string;
+  role: Role;
+}
+
+/** A signed-in person who does not belong to any home yet. */
+export interface HomelessUser {
+  email: string;
+  name: string | null;
+  picture: string | null;
+  display_name: string | null;
+  color: string | null;
+  household_id: null;
 }
 
 interface JwtPayload {
@@ -136,67 +152,185 @@ function readCookie(req: VercelRequest, name: string): string | null {
 
 // ── What the rest of the API calls ───────────────────────────────────────
 
-/** The signed-in user, or null. Never throws for "not signed in". */
-export async function currentUser(req: VercelRequest): Promise<SessionUser | null> {
+/** Who is signed in, before any household is chosen. Null when nobody is. */
+export function signedInEmail(req: VercelRequest): string | null {
   const token = readCookie(req, SESSION_COOKIE)
     ?? (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null);
   if (!token) return null;
-  const payload = verifySession(token);
-  if (!payload) return null;
-  // The role is read fresh from the database on every request, never from the
-  // token. Otherwise revoking someone's access would take up to 30 days to
-  // take effect — the lifetime of the session they are already holding.
-  return await one<SessionUser>(
-    `SELECT email, name, picture, role, display_name, color FROM users WHERE email = $1`,
-    [payload.email],
+  return verifySession(token)?.email ?? null;
+}
+
+export interface Membership {
+  household_id: number;
+  household_name: string;
+  role: Role;
+}
+
+/**
+ * Every home this person belongs to.
+ *
+ * Read without a household scope, because it is the question asked *before* one
+ * is known — which is why `households` and `household_members` are the two
+ * tables not under row-level security. They are read here and nowhere else.
+ */
+export async function membershipsOf(email: string): Promise<Membership[]> {
+  return await query<Membership>(
+    `SELECT m.household_id, h.name AS household_name, m.role
+       FROM household_members m
+       JOIN households h ON h.id = m.household_id
+      WHERE m.email = $1
+      ORDER BY m.joined_at`,
+    [email],
   );
+}
+
+/**
+ * The signed-in user, or null. Never throws for "not signed in".
+ *
+ * The role is read fresh from the database on every request, never from the
+ * token. Otherwise revoking someone's access would take up to 30 days to take
+ * effect — the lifetime of the session they are already holding.
+ */
+export async function currentUser(req: VercelRequest): Promise<SessionUser | HomelessUser | null> {
+  const email = signedInEmail(req);
+  if (!email) return null;
+
+  const person = await one<{
+    email: string; name: string | null; picture: string | null;
+    display_name: string | null; color: string | null;
+  }>(
+    `SELECT email, name, picture, display_name, color FROM users WHERE email = $1`,
+    [email],
+  );
+  if (!person) return null;
+
+  const memberships = await membershipsOf(email);
+  const chosen = pickHousehold(memberships, readCookie(req, HOUSEHOLD_COOKIE));
+  if (!chosen) return { ...person, household_id: null };
+
+  return { ...person, ...chosen };
+}
+
+/**
+ * Which home a request acts in when a person belongs to more than one.
+ *
+ * The cookie is a preference, never an authorisation: a household the person
+ * does not belong to is not in `memberships` and therefore cannot be selected,
+ * whatever the cookie says.
+ */
+export function pickHousehold(memberships: Membership[], preferred: string | null): Membership | null {
+  if (preferred) {
+    const wanted = Number(preferred);
+    const match = memberships.find((m) => m.household_id === wanted);
+    if (match) return match;
+  }
+  return memberships[0] ?? null;
 }
 
 const RANK: Record<Role, number> = { pending: 0, viewer: 1, member: 2, owner: 3 };
 
+export const hasRole = (role: Role, minimum: Role): boolean => RANK[role] >= RANK[minimum];
+
 /**
- * The signed-in user, guaranteed to hold at least `minimum`.
+ * The signed-in user, guaranteed to belong to a home and hold at least
+ * `minimum` in it.
  *
- * 'pending' never passes: a stranger who signed in with Google is a person in
- * the waiting room, not a household member.
+ * 'pending' never passes: a person an owner has not admitted yet is in the
+ * waiting room, not in the household.
  */
 export async function requireUser(req: VercelRequest, minimum: Role = 'member'): Promise<SessionUser> {
   const user = await currentUser(req);
   if (!user) throw unauthorized();
-  if (user.role === 'pending') {
+  if (user.household_id === null) {
+    throw forbidden('אתם עדיין לא שייכים לבית. פתחו בית חדש, או בקשו קישור הזמנה.');
+  }
+  const member = user as SessionUser;
+  if (member.role === 'pending') {
     throw forbidden('החשבון שלך ממתין לאישור. בקשו מבעל הבית לאשר אותך.');
   }
-  if (RANK[user.role] < RANK[minimum]) throw forbidden();
-  return user;
+  if (!hasRole(member.role, minimum)) throw forbidden();
+  return member;
 }
 
 /**
- * Records the sign-in, and hands the very first person the keys.
+ * The one authorisation that has to work before any household exists.
  *
- * Somebody has to be the owner, and there is no console to promote them from.
- * The first successful Google sign-in on a fresh database becomes the owner;
- * every sign-in after that lands on 'pending' and waits. The window this opens
- * is exactly the gap between deploying and signing in once — so sign in first.
+ * There is a deadlock otherwise: the migration is what creates the
+ * `households` table and adopts the existing data into the first home — but the
+ * router will not run anything for a person with no home, and nobody has one
+ * until the migration has run. That is not hypothetical; it is exactly the
+ * state every database upgrading to this version is in.
+ *
+ * So this opens a window, and the window closes by itself: an owner of any
+ * household passes normally, and if there are no households at all, the legacy
+ * `users.role = 'owner'` passes instead. The moment the migration succeeds the
+ * first household exists and the fallback stops applying. It is also the only
+ * code left that reads `users.role`.
  */
-export async function upsertUserOnSignIn(profile: { email: string; name: string | null; picture: string | null }): Promise<SessionUser> {
-  const existing = await one<SessionUser>(`SELECT email, name, picture, role, display_name, color FROM users WHERE email = $1`, [profile.email]);
-  if (existing) {
-    await query(
-      `UPDATE users SET name = COALESCE($2, name), picture = COALESCE($3, picture), last_seen_at = NOW() WHERE email = $1`,
-      [profile.email, profile.name, profile.picture],
-    );
-    return { ...existing, name: profile.name ?? existing.name, picture: profile.picture ?? existing.picture };
-  }
+export async function requireMigrator(req: VercelRequest): Promise<string> {
+  const email = signedInEmail(req);
+  if (!email) throw unauthorized();
 
-  const tally = await one<{ count: number }>(`SELECT COUNT(*)::int AS count FROM users`);
-  const role: Role = (tally?.count ?? 0) === 0 ? 'owner' : 'pending';
-  const created = await one<SessionUser>(
-    `INSERT INTO users (email, name, picture, role, last_seen_at)
-     VALUES ($1, $2, $3, $4, NOW())
-     ON CONFLICT (email) DO UPDATE SET last_seen_at = NOW()
-     RETURNING email, name, picture, role, display_name, color`,
-    [profile.email, profile.name, profile.picture, role],
+  const memberships = await membershipsOf(email);
+  if (memberships.some((m) => m.role === 'owner')) return email;
+  if (memberships.length > 0) throw forbidden('רק בעל הבית יכול להריץ מיגרציה');
+
+  const legacy = await one<{ role: string }>(
+    `SELECT role FROM users WHERE email = $1`, [email],
+  ).catch(() => null);
+  const anyHousehold = await one<{ count: number }>(
+    `SELECT COUNT(*)::int AS count FROM households`,
+  ).catch(() => ({ count: 0 }));   // the table may not exist yet — that is the case this exists for
+
+  if ((anyHousehold?.count ?? 0) === 0 && legacy?.role === 'owner') return email;
+  throw forbidden('רק בעל הבית יכול להריץ מיגרציה');
+}
+
+/**
+ * Records the sign-in. Creates a person, never a household.
+ *
+ * This used to hand the first person on a fresh database the keys to
+ * everything, because there was one home and somebody had to own it. With more
+ * than one home that shortcut becomes a race — whoever signs in first owns the
+ * database — so signing in now means only that Google knows who you are.
+ * Belonging is a separate, deliberate act: open a home, or open an invitation.
+ */
+export async function upsertUserOnSignIn(
+  profile: { email: string; name: string | null; picture: string | null },
+): Promise<void> {
+  await query(
+    `INSERT INTO users (email, name, picture, last_seen_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (email) DO UPDATE
+       SET name = COALESCE(EXCLUDED.name, users.name),
+           picture = COALESCE(EXCLUDED.picture, users.picture),
+           last_seen_at = NOW()`,
+    [profile.email, profile.name, profile.picture],
   );
-  if (!created) throw new Error('failed to create user row');
-  return created;
+}
+
+/**
+ * Opens a home and makes this person its owner.
+ *
+ * Both rows or neither: a household with no owner is unreachable — nobody can
+ * admit anyone to it, including themselves — and it cannot be cleaned up from
+ * inside the app either.
+ *
+ * Runs outside any household scope, which is the point: this is what creates
+ * the scope that everything else runs inside.
+ */
+export async function createHousehold(name: string, email: string): Promise<Membership> {
+  return await transaction(async (client) => {
+    const created = await client.query<{ id: number; name: string }>(
+      `INSERT INTO households (name, created_by) VALUES ($1, $2) RETURNING id, name`,
+      [name, email],
+    );
+    const home = created.rows[0];
+    if (!home) throw new Error('failed to create household');
+    await client.query(
+      `INSERT INTO household_members (household_id, email, role) VALUES ($1, $2, 'owner')`,
+      [home.id, email],
+    );
+    return { household_id: home.id, household_name: home.name, role: 'owner' as Role };
+  });
 }

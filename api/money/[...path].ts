@@ -269,11 +269,18 @@ async function createTransfer(ctx: Ctx) {
 
 // ── Who owes whom ────────────────────────────────────────────────────────
 
-async function getBalance() {
+async function getBalance(ctx: Ctx) {
   const [members, spends, settlements] = await Promise.all([
+    // Hand-scoped: `household_members` is outside row-level security, so this
+    // household_id is doing real work. Everything else in this file is scoped
+    // by the policies and needs no such clause.
     query<{ email: string; display_name: string }>(
-      `SELECT email, COALESCE(display_name, name, split_part(email, '@', 1)) AS display_name
-         FROM users WHERE role IN ('owner', 'member') ORDER BY created_at`,
+      `SELECT u.email, COALESCE(u.display_name, u.name, split_part(u.email, '@', 1)) AS display_name
+         FROM household_members m
+         JOIN users u ON u.email = m.email
+        WHERE m.household_id = $1 AND m.role IN ('owner', 'member')
+        ORDER BY m.joined_at`,
+      [ctx.user.household_id],
     ),
     query<{ amount: number; paid_by: string | null; split: 'shared' | 'personal' }>(
       `SELECT amount, paid_by, split FROM transactions

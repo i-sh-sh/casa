@@ -20,14 +20,15 @@ export const SCHEMA_SQL = `-- casa — the whole schema, in one idempotent file.
 -- People
 -- ─────────────────────────────────────────────────────────────────────────
 --
--- One household, several people. There is deliberately no household_id on
--- anything: we are two, and a column that exists "in case we ever run a SaaS"
--- is a join every query pays for forever. Adding it later is a migration;
--- carrying it unused is a tax.
+-- A person, not a member. Identity lives here; belonging lives in
+-- \`household_members\`, near the bottom of this file.
 --
--- The first person to sign in becomes the owner. Everyone after them lands on
--- 'pending' and sees nothing until an owner promotes them — so a stranger who
--- finds the URL and has a Google account gets a waiting room, not the budget.
+-- This table once carried \`role\`, when there was exactly one home in the
+-- database. That column is left in place because the migration reads it to
+-- build the first membership, and because dropping a column is the one
+-- migration step that cannot be undone by re-running the file. **Nothing in
+-- the application reads users.role any more** — the authoritative role is
+-- \`household_members.role\`, and it is per-home.
 
 CREATE TABLE IF NOT EXISTS users (
   email         TEXT PRIMARY KEY,
@@ -348,6 +349,177 @@ CREATE TABLE IF NOT EXISTS sent_notifications (
 -- alternative is a schema that is only correct on a database nobody has.
 
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS commitment TEXT NOT NULL DEFAULT 'flexible';
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Households — more than one home in one database
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- The comment at the top of this file said there would deliberately never be a
+-- household_id, because we were two. That was right until other couples asked
+-- to use it. This section replaces that decision, and it is written to be the
+-- *only* place isolation is decided.
+--
+-- The rule: **a query that forgets to filter by household must not leak.**
+-- App-level scoping cannot promise that — it asks forty query sites to
+-- remember, and the one that forgets is somebody else's salary on screen. So
+-- the isolation lives in Postgres:
+--
+--   · every tenant table carries household_id, NOT NULL;
+--   · its DEFAULT is the current household, so an INSERT never names it;
+--   · ROW LEVEL SECURITY, FORCED, hides every other household's rows.
+--
+-- The current household is a transaction-local setting, \`casa.household_id\`,
+-- set once per request in api/_lib/db.ts. When it is unset the policy compares
+-- against NULL, which is never true — so an unscoped connection sees nothing
+-- and can write nothing. Fail-closed in both directions, which is the only
+-- acceptable default when the failure mode is one couple reading another's
+-- money.
+--
+-- \`households\`, \`household_members\` and \`household_invites\` themselves are NOT
+-- under RLS: answering "which homes does this person belong to" is precisely
+-- the question asked *before* a household is known. Those three tables are
+-- read from one file (api/_lib/auth.ts) and nowhere else.
+
+CREATE TABLE IF NOT EXISTS households (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  created_by  TEXT REFERENCES users(email) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- The role lives here, not on \`users\`: it is a property of a person *in a
+-- home*, not of the person. The same email can be an owner of one and a viewer
+-- of another, and on the day someone leaves a household their role there ends
+-- without touching who they are.
+CREATE TABLE IF NOT EXISTS household_members (
+  household_id  INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  email         TEXT NOT NULL REFERENCES users(email) ON DELETE CASCADE,
+  role          TEXT NOT NULL DEFAULT 'member'
+                CHECK (role IN ('owner', 'member', 'viewer', 'pending')),
+  joined_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (household_id, email)
+);
+
+CREATE INDEX IF NOT EXISTS household_members_email ON household_members (email);
+
+-- An invitation is a one-time token, not an email address on a list. Inviting
+-- by address means guessing which of a person's three Google accounts they
+-- will actually use; a link they open while signed in cannot be guessed wrong.
+CREATE TABLE IF NOT EXISTS household_invites (
+  token         TEXT PRIMARY KEY,
+  household_id  INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+  role          TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'viewer')),
+  created_by    TEXT REFERENCES users(email) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at    TIMESTAMPTZ NOT NULL,
+  accepted_at   TIMESTAMPTZ,
+  accepted_by   TEXT REFERENCES users(email) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS household_invites_household ON household_invites (household_id);
+
+DO $$
+DECLARE
+  tenant_table TEXT;
+  home         INTEGER;
+  has_null     BOOLEAN;
+  -- Every table holding data that belongs to one home. \`users\` is absent on
+  -- purpose: a person is not owned by a household. \`push_subscriptions\` is
+  -- absent too — a subscription belongs to a device, and it reaches the right
+  -- home through the member who owns it.
+  tenant_tables TEXT[] := ARRAY[
+    'accounts', 'category_groups', 'categories', 'budget_allocations',
+    'transactions', 'recurring_bills', 'settlements',
+    'products', 'stock_entries', 'stock_log', 'shopping_items',
+    'sent_notifications'
+  ];
+  scope_expr TEXT := 'nullif(current_setting(''casa.household_id'', true), '''')::int';
+BEGIN
+  -- The home everything that already exists belongs to.
+  --
+  -- Only ever created once, and only on a database that already has people in
+  -- it: on a fresh database there is nothing to adopt, and the first person to
+  -- sign in opens their own home instead (see api/_lib/auth.ts).
+  SELECT id INTO home FROM households ORDER BY id LIMIT 1;
+
+  IF home IS NULL AND EXISTS (SELECT 1 FROM users) THEN
+    INSERT INTO households (name, created_by)
+      VALUES (
+        'הבית שלנו',
+        (SELECT email FROM users WHERE role = 'owner' ORDER BY created_at LIMIT 1)
+      )
+      RETURNING id INTO home;
+
+    -- Roles move from \`users\` to the membership, unchanged.
+    INSERT INTO household_members (household_id, email, role)
+      SELECT home, email, role FROM users
+      ON CONFLICT (household_id, email) DO NOTHING;
+  END IF;
+
+  FOREACH tenant_table IN ARRAY tenant_tables LOOP
+    EXECUTE format(
+      'ALTER TABLE %I ADD COLUMN IF NOT EXISTS household_id INTEGER
+         REFERENCES households(id) ON DELETE CASCADE', tenant_table);
+
+    -- Adopt existing rows. On a re-run this updates nothing: either the column
+    -- is already filled, or row-level security is already on and hides the rows
+    -- from an unscoped connection — which is the same answer.
+    IF home IS NOT NULL THEN
+      EXECUTE format('UPDATE %I SET household_id = %L WHERE household_id IS NULL',
+                     tenant_table, home);
+    END IF;
+
+    -- The default is what removes household_id from forty INSERT statements.
+    -- Without it every insert site would have to name the column, and the one
+    -- that forgot would fail — loudly, but only in production.
+    EXECUTE format('ALTER TABLE %I ALTER COLUMN household_id SET DEFAULT %s',
+                   tenant_table, scope_expr);
+
+    EXECUTE format('SELECT EXISTS (SELECT 1 FROM %I WHERE household_id IS NULL)',
+                   tenant_table) INTO has_null;
+    IF NOT has_null THEN
+      EXECUTE format('ALTER TABLE %I ALTER COLUMN household_id SET NOT NULL', tenant_table);
+    END IF;
+
+    EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I (household_id)',
+                   tenant_table || '_household', tenant_table);
+
+    -- FORCE matters as much as ENABLE. Without it the role that owns the
+    -- tables — which is the role this app connects as — bypasses every policy,
+    -- and the isolation would be decoration.
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tenant_table);
+    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tenant_table);
+    EXECUTE format('DROP POLICY IF EXISTS casa_household_isolation ON %I', tenant_table);
+    EXECUTE format(
+      'CREATE POLICY casa_household_isolation ON %I
+         USING (household_id = %s) WITH CHECK (household_id = %s)',
+      tenant_table, scope_expr, scope_expr);
+  END LOOP;
+END $$;
+
+-- Uniqueness that was global has to become per-home, or the second household
+-- cannot have a category called «סופר» — and the failure would read as a
+-- mysterious duplicate-key error rather than as a missing tenant column.
+DO $$
+BEGIN
+  ALTER TABLE category_groups DROP CONSTRAINT IF EXISTS category_groups_name_key;
+  ALTER TABLE products DROP CONSTRAINT IF EXISTS products_name_key_key;
+  ALTER TABLE sent_notifications DROP CONSTRAINT IF EXISTS sent_notifications_kind_subject_key_sent_on_key;
+END $$;
+
+DROP INDEX IF EXISTS categories_unique_name;
+DROP INDEX IF EXISTS shopping_items_one_open_per_name;
+
+CREATE UNIQUE INDEX IF NOT EXISTS category_groups_unique_name
+  ON category_groups (household_id, lower(name));
+CREATE UNIQUE INDEX IF NOT EXISTS categories_unique_name
+  ON categories (household_id, COALESCE(group_id, -1), lower(name));
+CREATE UNIQUE INDEX IF NOT EXISTS products_unique_name_key
+  ON products (household_id, name_key);
+CREATE UNIQUE INDEX IF NOT EXISTS shopping_items_one_open_per_name
+  ON shopping_items (household_id, name_key) WHERE status = 'open' AND product_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS sent_notifications_once
+  ON sent_notifications (household_id, kind, subject_key, sent_on);
 
 DO $$
 BEGIN

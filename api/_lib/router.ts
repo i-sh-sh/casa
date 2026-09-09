@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { body as parseBody, handler, json, notFound, HttpError } from './http.js';
-import { requireUser, type Role, type SessionUser } from './auth.js';
+import { requireMigrator, requireUser, type Role, type SessionUser } from './auth.js';
+import { withHousehold } from './db.js';
 import { match, queryOf, segmentsOf } from '../../shared/routing.js';
 
 // Why a router inside a serverless function at all:
@@ -29,8 +30,29 @@ export interface RouteDef {
   path: string;
   /** Minimum role. Defaults to 'member'; read-only routes usually take 'viewer'. */
   role?: Role;
+  /**
+   * Runs outside any household scope.
+   *
+   * Almost nothing should: outside a scope, row-level security hides every
+   * tenant row, so an endpoint that sets this by mistake finds an empty
+   * database rather than a leak. It exists for the handful of routes that
+   * operate on the household list itself.
+   */
+  unscoped?: boolean;
+  /**
+   * Runs before any household exists — the migration, and the health check
+   * that tells you whether it needs running. Implies `unscoped`, and uses the
+   * bootstrap authorisation in auth.ts rather than a membership.
+   */
+  bootstrap?: boolean;
   handle: (ctx: Ctx) => Promise<unknown>;
 }
+
+/** A stand-in for the bootstrap window, where there is no household to be in. */
+const NO_HOUSEHOLD: SessionUser = {
+  email: '', name: null, picture: null, display_name: null, color: null,
+  household_id: 0, household_name: '', role: 'owner',
+};
 
 export function router(routes: RouteDef[]) {
   return handler(async (req, res) => {
@@ -44,15 +66,27 @@ export function router(routes: RouteDef[]) {
       pathMatched = true;
       if (route.method !== method) continue;
 
-      const user = await requireUser(req, route.role ?? 'member');
-      const result = await route.handle({
+      const user = route.bootstrap
+        ? { ...NO_HOUSEHOLD, email: await requireMigrator(req) }
+        : await requireUser(req, route.role ?? 'member');
+      const ctx: Ctx = {
         req,
         res,
         user,
         params,
         body: method === 'GET' ? {} : parseBody(req),
         query: queryOf(req),
-      });
+      };
+
+      // Everything a handler does runs inside one household, and nothing runs
+      // outside one. `withHousehold` opens a transaction, sets the household
+      // for its lifetime, and carries the connection to every query through
+      // AsyncLocalStorage — so the isolation applies whether or not the handler
+      // remembered it exists. The policies live in db/schema.sql, "Households".
+      const result = route.unscoped || route.bootstrap
+        ? await route.handle(ctx)
+        : await withHousehold(user.household_id, () => route.handle(ctx));
+
       // A handler that already wrote the response returns undefined.
       if (res.writableEnded) return;
       json(res, method === 'POST' ? 201 : 200, result ?? { ok: true });

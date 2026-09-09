@@ -1,4 +1,5 @@
 import pg from 'pg';
+import { AsyncLocalStorage } from 'node:async_hooks';
 
 const { Pool, types } = pg;
 
@@ -42,11 +43,101 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
+/**
+ * The connection the current request is bound to, if it is inside a household.
+ *
+ * Row-level security reads `casa.household_id`, and that setting is
+ * transaction-local — so every query in a request has to run on the *same*
+ * connection, inside the *same* transaction as the `set_config` that scoped it.
+ * Taking a fresh connection from the pool mid-request would land on one with no
+ * setting at all, where the policy hides every row.
+ *
+ * Passing that client down through forty call sites would mean forty chances to
+ * pass the wrong one. AsyncLocalStorage carries it implicitly instead, so
+ * `query` and `one` keep the signatures they had and every existing handler is
+ * scoped without being edited.
+ */
+const scoped = new AsyncLocalStorage<pg.PoolClient>();
+
+/**
+ * Binds everything `fn` does to one household.
+ *
+ * This is the only place a household is ever chosen, and it is called from one
+ * place (api/_lib/router.ts). Outside it, a connection carries no household and
+ * the policies deny both reads and writes — which is why an endpoint that
+ * forgets to scope itself returns nothing rather than everything.
+ */
+/**
+ * Proves that row-level security is actually in force, once per process.
+ *
+ * This check exists because of how the isolation fails. Row-level security is
+ * ignored entirely for a superuser, and for any role holding BYPASSRLS — and
+ * when it is ignored, nothing anywhere reports it. Every policy is still
+ * listed, every table still says `rowsecurity = true`, every query still
+ * succeeds. The only visible symptom is one household reading another's money,
+ * which is the symptom we would find out about from a person, not a log.
+ *
+ * That is not hypothetical: the first run of this migration was tested against
+ * a superuser and passed every isolation check by seeing everything.
+ *
+ * `row_security_active` answers the exact question — is RLS being applied to
+ * *this* role, on a table that has it — so a database that cannot enforce the
+ * separation refuses to serve instead of quietly serving everyone.
+ */
+let rlsProven: Promise<void> | undefined;
+
+function proveIsolation(client: pg.PoolClient): Promise<void> {
+  rlsProven ??= (async () => {
+    const probe = await client.query<{ active: boolean; superuser: boolean }>(
+      `SELECT row_security_active('accounts') AS active,
+              (SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user) AS superuser`,
+    );
+    const row = probe.rows[0];
+    if (!row?.active || row.superuser) {
+      rlsProven = undefined; // a transient failure must not poison the process
+      throw new Error(
+        'ההפרדה בין בתים לא פעילה במסד הנתונים הזה. '
+        + `row_security_active=${row?.active} superuser_or_bypassrls=${row?.superuser}. `
+        + 'המשמעות היא שבית אחד יכול לקרוא את הנתונים של בית אחר. '
+        + 'התחברו למסד בתור תפקיד שאינו superuser ואינו BYPASSRLS, או הריצו את המיגרציה מחדש.',
+      );
+    }
+  })();
+  return rlsProven;
+}
+
+export async function withHousehold<T>(householdId: number, fn: () => Promise<T>): Promise<T> {
+  if (!Number.isInteger(householdId) || householdId <= 0) {
+    throw new Error(`withHousehold called with an invalid household: ${householdId}`);
+  }
+  const client = await getPool().connect();
+  try {
+    await proveIsolation(client);
+    await client.query('BEGIN');
+    // set_config, not SET LOCAL: the value is a parameter, and SET LOCAL takes
+    // only literals. `true` makes it local to this transaction, so it cannot
+    // survive on a pooled connection into somebody else's request.
+    await client.query(`SELECT set_config('casa.household_id', $1, true)`, [String(householdId)]);
+    const result = await scoped.run(client, fn);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => { /* the original error is the one worth throwing */ });
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** The household this code is running for, or null outside a scope. Diagnostics only. */
+export const currentHouseholdScope = (): boolean => scoped.getStore() !== undefined;
+
 export async function query<T extends pg.QueryResultRow = pg.QueryResultRow>(
   text: string,
   params: unknown[] = [],
 ): Promise<T[]> {
-  const result = await getPool().query<T>(text, params as never[]);
+  const client = scoped.getStore() ?? getPool();
+  const result = await client.query<T>(text, params as never[]);
   return result.rows;
 }
 
@@ -58,8 +149,23 @@ export async function one<T extends pg.QueryResultRow = pg.QueryResultRow>(
   return rows[0] ?? null;
 }
 
-/** Runs `fn` inside a transaction, rolling back on any throw. */
+/**
+ * Runs `fn` inside a transaction, rolling back on any throw.
+ *
+ * Inside a household scope there is already a transaction open on this
+ * request's connection, so this runs on that one rather than checking out a
+ * second. Taking a fresh connection here would be the subtlest possible bug:
+ * the new one carries no `casa.household_id`, every policy would hide every
+ * row, and the symptom would be a handler that silently finds nothing — with
+ * no error anywhere to explain it.
+ *
+ * The nested case therefore does not BEGIN or COMMIT of its own. A throw still
+ * unwinds correctly: withHousehold rolls the whole request back.
+ */
 export async function transaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  const ambient = scoped.getStore();
+  if (ambient) return await fn(ambient);
+
   const client = await getPool().connect();
   try {
     await client.query('BEGIN');

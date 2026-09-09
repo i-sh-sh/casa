@@ -27,7 +27,7 @@ export const SEED_SQL = `
 INSERT INTO category_groups (name, sort_order) VALUES
   ('קבועות', 0), ('יומיום', 1), ('הבית', 2), ('אישי', 3), ('בריאות', 4),
   ('חיסכון', 5), ('לא צפויות', 6), ('הכנסות', 7)
-ON CONFLICT (name) DO NOTHING;
+ON CONFLICT (household_id, lower(name)) DO NOTHING;
 
 INSERT INTO categories (group_id, name, kind, commitment, monthly_target, sort_order)
 SELECT g.id, v.name, v.kind, v.commitment, v.target, v.ord
@@ -103,5 +103,5 @@ INSERT INTO products (name, name_key, unit, category, min_qty, default_location,
   ('נייר טואלט',   'נייר טואלט',   'גליל',  'טואלטיקה',        6, 'אמבטיה', NULL),
   ('סבון כלים',    'סבון כלים',    'יח׳',   'ניקיון',          1, 'ניקיון', NULL),
   ('אבקת כביסה',   'אבקת כביסה',   'יח׳',   'ניקיון',          1, 'ניקיון', NULL)
-ON CONFLICT (name_key) DO NOTHING;
+ON CONFLICT (household_id, name_key) DO NOTHING;
 `;

@@ -1,6 +1,6 @@
 import type { VercelRequest } from '@vercel/node';
 import { handler, json, forbidden } from '../_lib/http.js';
-import { query } from '../_lib/db.js';
+import { query, withHousehold } from '../_lib/db.js';
 import { syncShoppingListFromStock } from '../_lib/pantry-service.js';
 import { claimOncePerDay, push, telegram } from '../_lib/notify.js';
 
@@ -11,6 +11,12 @@ import { claimOncePerDay, push, telegram } from '../_lib/notify.js';
  * What it deliberately does not notify about: anything already expired. By the
  * time that is true the yoghurt is off and the message is about something you
  * can no longer act on. The screen shows it in red; the phone stays quiet.
+ *
+ * It runs for every household in turn. There is no signed-in person here, so
+ * nothing sets the household for it — and under row-level security an unscoped
+ * pass reads no rows at all and would report a cheerful, permanent silence. The
+ * loop below is what makes that impossible to get wrong: each home is entered
+ * explicitly, and a failure in one does not stop the others.
  */
 
 function authorized(req: VercelRequest): boolean {
@@ -26,6 +32,23 @@ function authorized(req: VercelRequest): boolean {
 export default handler(async (req, res) => {
   if (!authorized(req)) throw forbidden('cron secret mismatch');
 
+  const homes = await query<{ id: number }>(`SELECT id FROM households ORDER BY id`);
+  const results = [];
+  for (const home of homes) {
+    try {
+      results.push({ household_id: home.id, ...await runForHousehold(home.id) });
+    } catch (err) {
+      // One household's bad data must not silence every other household's
+      // morning. The failure is reported, the pass continues.
+      console.error('daily digest failed', { household_id: home.id, err });
+      results.push({ household_id: home.id, ok: false, error: String(err) });
+    }
+  }
+  json(res, 200, { ok: true, households: results });
+});
+
+async function runForHousehold(householdId: number) {
+  return await withHousehold(householdId, async () => {
   const { added } = await syncShoppingListFromStock(null);
 
   const [expiring, dueBills, openItems] = await Promise.all([
@@ -66,8 +89,7 @@ export default handler(async (req, res) => {
   }
 
   if (lines.length === 0) {
-    json(res, 200, { ok: true, quiet: true, open_items: openItems[0]?.count ?? 0 });
-    return;
+    return { ok: true, quiet: true, open_items: openItems[0]?.count ?? 0 };
   }
 
   // One claim for the whole digest, keyed by its content: a retry an hour later
@@ -75,8 +97,7 @@ export default handler(async (req, res) => {
   const digestKey = lines.join('|').slice(0, 200);
   const first = await claimOncePerDay('daily-digest', digestKey);
   if (!first) {
-    json(res, 200, { ok: true, already_sent: true });
-    return;
+    return { ok: true, already_sent: true };
   }
 
   const text = ['<b>קאסה · הבוקר בבית</b>', '', ...lines].join('\n');
@@ -89,12 +110,13 @@ export default handler(async (req, res) => {
     }),
   ]);
 
-  json(res, 200, {
+  return {
     ok: true,
     added: added.map((p) => p.name),
     expiring: expiring.length,
     bills: dueBills.length,
     telegram: sentTelegram,
     push: sentPush,
+  };
   });
-});
+}
