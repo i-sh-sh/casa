@@ -237,3 +237,14 @@ test('TLS is only ever relaxed by an explicit sslmode=disable', () => {
     'TLS verification must not depend on guessing the environment',
   );
 });
+
+test('reading memberships survives a database that predates households', () => {
+  // /auth/me calls membershipsOf before anything else. On the deploy that
+  // introduces households the tables do not exist yet, and an uncaught 42P01
+  // there returns 500 for every request — so the app never renders far enough
+  // to show the migration button that would end the state. The live half of
+  // this (that the missing table raises exactly 42P01) is in isolation.test.ts.
+  const auth = code(readFileSync(join(root, 'api/_lib/auth.ts'), 'utf-8'));
+  const fn = auth.slice(auth.indexOf('export async function membershipsOf'));
+  assert.match(fn.slice(0, 700), /42P01/, 'membershipsOf must tolerate the tables not existing yet');
+});

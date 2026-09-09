@@ -172,16 +172,27 @@ export interface Membership {
  * Read without a household scope, because it is the question asked *before* one
  * is known — which is why `households` and `household_members` are the two
  * tables not under row-level security. They are read here and nowhere else.
+ *
+ * A database that predates households has neither table, and 42P01 here would
+ * be fatal in the worst place: `/auth/me` calls this, so the app could not even
+ * load far enough to offer the migration that creates them. On that one error,
+ * the honest answer is "no memberships" — which is true, and which lands the
+ * person on the screen with the migration button.
  */
 export async function membershipsOf(email: string): Promise<Membership[]> {
-  return await query<Membership>(
-    `SELECT m.household_id, h.name AS household_name, m.role
-       FROM household_members m
-       JOIN households h ON h.id = m.household_id
-      WHERE m.email = $1
-      ORDER BY m.joined_at`,
-    [email],
-  );
+  try {
+    return await query<Membership>(
+      `SELECT m.household_id, h.name AS household_name, m.role
+         FROM household_members m
+         JOIN households h ON h.id = m.household_id
+        WHERE m.email = $1
+        ORDER BY m.joined_at`,
+      [email],
+    );
+  } catch (err) {
+    if ((err as { code?: string }).code === '42P01') return [];  // undefined_table: not migrated yet
+    throw err;
+  }
 }
 
 /**

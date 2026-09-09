@@ -322,5 +322,55 @@ test('the real db layer carries the household through AsyncLocalStorage', option
   // Outside any scope, the same helpers read nothing.
   assert.deepEqual(await db.query(`SELECT name FROM accounts`), []);
 
+  // The pool is a module singleton shared with the test below, so it is closed
+  // once, at the end of the file — not here.
+});
+
+test('the upgrade path works on a database that predates households', options, async () => {
+  // The deadlock this guards: on the deploy that introduces households nobody
+  // belongs to one, so the gate replaces the whole app — including the settings
+  // screen holding the migration button. If reading memberships throws on a
+  // database that predates them, /auth/me returns 500 and the app never renders
+  // far enough to offer the migration that would fix it.
+  //
+  // api/_lib/auth.ts cannot be imported here: files under api/ use `.js`
+  // specifiers that Node's type-stripping does not remap. So this proves the
+  // premise its catch depends on — that the missing table raises exactly 42P01
+  // — and tenancy.test.ts asserts that the catch is present.
+  process.env['DATABASE_URL'] = URL;
+  const db = await import('../../api/_lib/db.ts');
+
+  const client = new pg.Client({ connectionString: URL });
+  await client.connect();
+  await client.query(`DROP SCHEMA public CASCADE; CREATE SCHEMA public;`);
+  await client.query(`
+    CREATE TABLE users (
+      email TEXT PRIMARY KEY, name TEXT, picture TEXT,
+      role TEXT NOT NULL DEFAULT 'pending', display_name TEXT, color TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), last_seen_at TIMESTAMPTZ);
+    INSERT INTO users (email, name, role) VALUES ('owner@example.com','בעלים','owner');
+  `);
+  await client.end();
+
+  await assert.rejects(
+    db.query(`SELECT 1 FROM household_members`),
+    (err: { code?: string }) => {
+      assert.equal(err.code, '42P01', 'the missing table must raise undefined_table');
+      return true;
+    },
+  );
+
+  // The health check has to answer on an unmigrated database rather than throw:
+  // it is what tells the gate to offer the migration.
+  const tables = await db.query<{ table_name: string }>(
+    `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`);
+  assert.ok(!tables.some((t) => t.table_name === 'households'), 'setup is wrong: already migrated');
+
+  // And the migration runs from there and adopts the legacy owner.
+  await db.query(readFileSync(join(root, 'db/schema.sql'), 'utf-8'));
+  const members = await db.query<{ email: string; role: string }>(
+    `SELECT email, role FROM household_members`);
+  assert.deepEqual(members, [{ email: 'owner@example.com', role: 'owner' }]);
+
   await db.getPool().end();
 });

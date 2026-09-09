@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
+import { ErrorNote, useAsync } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import type { Household } from '@shared/types.js';
 
@@ -21,10 +22,20 @@ export function HouseholdGate({ onJoined }: { onJoined: () => void }) {
   const { user, signOut } = useSession();
   const token = new URLSearchParams(location.search).get('invite');
 
+  // The deadlock this avoids: on the deploy that introduces households, nobody
+  // belongs to one yet — so this screen replaces the whole app, including the
+  // settings screen with the migration button on it. Without the check below
+  // there is no way to reach the migration that would end the state you are
+  // stuck in, and «pilot with three couples» begins with the owner locked out
+  // of their own budget.
+  const health = useAsync(() => api.get<{ ok: boolean; missing: string[] }>('/admin/health'));
+
   return (
     <div className="gate">
       <div className="wordmark">קאסה</div>
-      {token ? <AcceptInvite token={token} onJoined={onJoined} /> : <OpenHome onOpened={onJoined} />}
+      {health.data && !health.data.ok
+        ? <RunMigration missing={health.data.missing} onDone={onJoined} />
+        : token ? <AcceptInvite token={token} onJoined={onJoined} /> : <OpenHome onOpened={onJoined} />}
 
       <hr className="rule" style={{ margin: 'var(--s6) 0 var(--s4)' }} />
       <p className="meta">
@@ -32,6 +43,48 @@ export function HouseholdGate({ onJoined }: { onJoined: () => void }) {
       </p>
       <button className="btn btn-quiet" onClick={() => void signOut()}>יציאה</button>
     </div>
+  );
+}
+
+/**
+ * The upgrade, done from the only screen that is reachable during it.
+ *
+ * Shown to the owner of a database whose schema predates households. The
+ * migration adopts everything that already exists into one home and carries the
+ * roles across, so the next render is the app, not this screen.
+ */
+function RunMigration({ missing, onDone }: { missing: string[]; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.post('/admin/migrate');
+      onDone();
+    } catch (err) {
+      // In full, never as a toast: when a migration fails, the exact text
+      // Postgres returned is the only thing that shortens the search.
+      setError(err instanceof Error ? err.message : 'המיגרציה נכשלה');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p>
+        מסד הנתונים לא מעודכן לגרסה הזו. הריצו את המיגרציה — היא בטוחה לחזור עליה,
+        לא מוחקת נתונים, ומאמצת את כל מה שכבר קיים לבית אחד.
+      </p>
+      <p className="meta n" style={{ fontSize: 12, marginBottom: 'var(--s4)' }}>
+        חסרות: {missing.join(', ')}
+      </p>
+      {error && <ErrorNote message={error} />}
+      <button className="btn btn-primary btn-block" onClick={() => void run()} disabled={busy}>
+        {busy ? 'רץ…' : 'הרצת מיגרציה'}
+      </button>
+    </>
   );
 }
 
