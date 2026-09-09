@@ -7,9 +7,25 @@ export interface User {
   email: string;
   name: string | null;
   picture: string | null;
-  role: Role;
   display_name: string | null;
   color: string | null;
+  /**
+   * The home this session is acting in, and the role held *there*.
+   *
+   * `null` means signed in but belonging to nowhere yet — a real state, not an
+   * error: a person who just accepted a Google prompt and has neither opened a
+   * home nor followed an invitation. The app shows them the door, not a budget.
+   */
+  household_id: number | null;
+  household_name?: string;
+  role?: Role;
+}
+
+/** One of the homes a person belongs to. */
+export interface Household {
+  household_id: number;
+  household_name: string;
+  role: Role;
 }
 
 // ── Money ────────────────────────────────────────────────────────────────

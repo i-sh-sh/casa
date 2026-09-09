@@ -281,3 +281,46 @@ test('an existing single-household database upgrades without losing anything', o
     await client.end();
   }
 });
+
+test('the real db layer carries the household through AsyncLocalStorage', options, async () => {
+  // Everything above drives Postgres directly. This drives api/_lib/db.ts —
+  // because the mechanism that binds a request to a household is not the SQL,
+  // it is AsyncLocalStorage carrying one client to every `query` call. If that
+  // slips, `query` silently takes a fresh pooled connection with no household
+  // on it, and every handler quietly finds nothing.
+  process.env['DATABASE_URL'] = URL;
+  const db = await import('../../api/_lib/db.ts');
+
+  const client = await freshDatabase();
+  try {
+    await twoHomes(client);
+  } finally {
+    await client.end();
+  }
+
+  const inFirst = await db.withHousehold(1, async () =>
+    (await db.query<{ name: string }>(`SELECT name FROM accounts`)).map((r) => r.name));
+  assert.deepEqual(inFirst, ['עובר ושב א']);
+
+  const inSecond = await db.withHousehold(2, async () =>
+    (await db.query<{ name: string }>(`SELECT name FROM accounts`)).map((r) => r.name));
+  assert.deepEqual(inSecond, ['עובר ושב ב']);
+
+  // Nested `transaction` must reuse the request's client. Taking its own would
+  // land on a connection with no household — the subtlest failure in the whole
+  // design, because it throws nothing and returns an empty list.
+  const nested = await db.withHousehold(1, async () =>
+    db.transaction(async (c) => (await c.query(`SELECT name FROM accounts`)).rows.length));
+  assert.equal(nested, 1, 'transaction() inside a household took an unscoped connection');
+
+  // An insert that names no household lands in the current one.
+  await db.withHousehold(2, () => db.query(`INSERT INTO accounts (name) VALUES ('נוסף')`));
+  const after = await db.withHousehold(1, async () =>
+    (await db.query(`SELECT name FROM accounts`)).length);
+  assert.equal(after, 1, 'a write in one household appeared in another');
+
+  // Outside any scope, the same helpers read nothing.
+  assert.deepEqual(await db.query(`SELECT name FROM accounts`), []);
+
+  await db.getPool().end();
+});

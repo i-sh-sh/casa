@@ -7,7 +7,8 @@ import { TopBar } from '../../ui/TopBar.js';
 import { formatILS } from '@shared/money.js';
 import { useVersion } from '../../lib/version.js';
 import { shouldUpdate } from '@shared/version.js';
-import type { Account, User } from '@shared/types.js';
+import type { Account, Role, User } from '@shared/types.js';
+import { HouseholdSwitcher } from '../household/HouseholdGate.js';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'בעל הבית', member: 'שותף', viewer: 'צופה', pending: 'ממתין לאישור',
@@ -17,7 +18,7 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export function SettingsScreen() {
-  const { user, signOut } = useSession();
+  const { user, households, signOut } = useSession();
   const accounts = useAsync(() => api.get<Account[]>('/money/accounts'));
   const [addingAccount, setAddingAccount] = useState(false);
   const isOwner = user?.role === 'owner';
@@ -27,7 +28,7 @@ export function SettingsScreen() {
 
   return (
     <>
-      <TopBar title="הגדרות" subtitle={user?.email} />
+      <TopBar title="הגדרות" subtitle={user?.household_name ?? user?.email} />
 
       <div className="page">
         <section className="section">
@@ -66,7 +67,10 @@ export function SettingsScreen() {
 
         <VersionSection />
 
+        {user && <HouseholdSwitcher households={households} current={user.household_id ?? 0} />}
+
         {isOwner && <MembersSection currentEmail={user.email} />}
+        {isOwner && <InviteSection />}
         {isOwner && <DatabaseSection />}
 
         <section className="section">
@@ -196,7 +200,7 @@ function VersionSection() {
 }
 
 function MembersSection({ currentEmail }: { currentEmail: string }) {
-  const users = useAsync(() => api.get<User[]>('/admin/users'));
+  const users = useAsync(() => api.get<(User & { role: Role })[]>('/admin/users'));
   const toast = useToast();
 
   async function setRole(email: string, role: string) {
@@ -220,7 +224,7 @@ function MembersSection({ currentEmail }: { currentEmail: string }) {
               <span className="meta n" style={{ fontSize: 12 }}>{u.email}</span>
             </span>
             {u.email === currentEmail ? (
-              <span className="label">{ROLE_LABELS[u.role]}</span>
+              <span className="label">{ROLE_LABELS[u.role] ?? u.role}</span>
             ) : (
               <select className="select" style={{ width: 'auto', minHeight: 40 }} value={u.role} onChange={(e) => void setRole(u.email, e.target.value)}>
                 {Object.entries(ROLE_LABELS).map(([value, label]) => (
@@ -239,8 +243,77 @@ function MembersSection({ currentEmail }: { currentEmail: string }) {
   );
 }
 
+/**
+ * The invitation link.
+ *
+ * The link is shown once and not stored anywhere the owner can retrieve it
+ * later: it is a credential to their household's money, and a list of live
+ * invitations sitting in a settings screen is a list of ways in. Losing one
+ * costs a tap to mint another.
+ */
+function InviteSection() {
+  const toast = useToast();
+  const [link, setLink] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function mint(role: 'member' | 'viewer') {
+    setBusy(true);
+    try {
+      const { token } = await api.post<{ token: string }>('/auth/invite', { role });
+      setLink(`${location.origin}/?invite=${token}`);
+    } catch (err) {
+      toast.show(err instanceof Error ? err.message : 'לא הצלחנו ליצור הזמנה', { tone: 'bad' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const copy = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast.show('הקישור הועתק');
+    } catch {
+      // Clipboard access is refused in plenty of ordinary situations. The link
+      // is on screen and selectable, so this is a convenience that failed, not
+      // a feature that broke.
+      toast.show('לא הצלחנו להעתיק — סמנו והעתיקו ידנית', { tone: 'bad' });
+    }
+  };
+
+  return (
+    <section className="section">
+      <h2>הזמנה</h2>
+      {link ? (
+        <>
+          <p className="meta n" style={{ fontSize: 13, wordBreak: 'break-all', marginBottom: 'var(--s3)' }}>{link}</p>
+          <button className="btn btn-primary btn-block btn-sm" onClick={() => void copy()}>העתקת הקישור</button>
+          <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+            תקף שבוע, ולפעם אחת. הקישור לא נשמר בשום מקום שאפשר לחזור אליו — אם הוא אבד, צרו חדש.
+          </p>
+        </>
+      ) : (
+        <>
+          <button className="btn btn-block btn-sm" disabled={busy} onClick={() => void mint('member')}>
+            קישור הזמנה לשותף
+          </button>
+          <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s2)' }} disabled={busy} onClick={() => void mint('viewer')}>
+            קישור לצופה בלבד
+          </button>
+          <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+            «שותף» רואה ומשנה הכול. «צופה» רואה הכול ולא משנה כלום.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+
 function DatabaseSection() {
-  const health = useAsync(() => api.get<{ ok: boolean; missing: string[]; hint: string | null }>('/admin/health'));
+  const health = useAsync(() => api.get<{
+    ok: boolean; missing: string[]; hint: string | null;
+    isolation: { enforced: boolean; unsafe_role: boolean } | null;
+  }>('/admin/health'));
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
@@ -275,6 +348,29 @@ function DatabaseSection() {
       )}
       {health.data && !health.data.ok && (
         <p className="meta n" style={{ fontSize: 12, marginBottom: 'var(--s3)' }}>{health.data.missing.join(', ')}</p>
+      )}
+
+      {/* Whether the separation between homes is actually being enforced, as
+          opposed to merely configured. It reads as a normal row when it is
+          fine, because it almost always is — and as the loudest thing on the
+          screen when it is not, because nothing else here can leak one
+          household's money into another's. */}
+      {health.data?.isolation && (
+        <div className="row" style={{ minHeight: 44 }}>
+          <span className="grow label">הפרדה בין בתים</span>
+          {health.data.isolation.enforced
+            ? <span>נאכפת</span>
+            : <span className="mark mark-red">לא פעילה</span>}
+        </div>
+      )}
+      {health.data?.isolation && !health.data.isolation.enforced && (
+        <ErrorNote message={
+          health.data.isolation.unsafe_role
+            ? 'המערכת מחוברת למסד בתור תפקיד שעוקף אבטחת שורות (superuser או BYPASSRLS). '
+              + 'המשמעות היא שבית אחד יכול לקרוא את הנתונים של בית אחר. החליפו את מחרוזת החיבור '
+              + 'לתפקיד רגיל לפני שמזמינים מישהו נוסף.'
+            : 'אבטחת השורות לא פעילה על הטבלאות. הריצו מיגרציה, ואם זה נמשך — אל תזמינו בית נוסף.'
+        } />
       )}
 
       {failure && <ErrorNote message={failure} />}

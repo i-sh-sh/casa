@@ -126,6 +126,19 @@ test('the seed inserts against conflict targets the schema actually creates', ()
 
 // ── The API side ─────────────────────────────────────────────────────────
 
+/**
+ * TypeScript source with its comments removed.
+ *
+ * This project explains itself at length, and a rule stated in prose — "must
+ * not depend on a NODE_ENV check" — matches the pattern that forbids it. Three
+ * separate tests here have failed on their own commentary. Assert on code.
+ */
+function code(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+}
+
 function apiFiles(): { path: string; source: string }[] {
   const out: { path: string; source: string }[] = [];
   const walk = (dir: string) => {
@@ -208,5 +221,19 @@ test('nothing but the bootstrap reads the old global users.role', () => {
   assert.deepEqual(
     offenders, [],
     `the authoritative role is household_members.role — users.role is legacy: ${offenders.join(', ')}`,
+  );
+});
+
+test('TLS is only ever relaxed by an explicit sslmode=disable', () => {
+  // The database holds other couples' salaries. Verified TLS must not be
+  // switchable by an environment name, a NODE_ENV check, or a hostname guess —
+  // only by the connection string saying so in as many words, which a Neon URL
+  // never does.
+  const db = code(readFileSync(join(root, 'api/_lib/db.ts'), 'utf-8'));
+  assert.match(db, /sslmode=disable/);
+  assert.match(db, /rejectUnauthorized: true/);
+  assert.doesNotMatch(
+    db, /NODE_ENV|localhost|127\.0\.0\.1/,
+    'TLS verification must not depend on guessing the environment',
   );
 });

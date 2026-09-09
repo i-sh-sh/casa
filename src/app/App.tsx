@@ -9,6 +9,7 @@ import { TransactionsScreen } from '../features/money/TransactionsScreen.js';
 import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
+import { HouseholdGate } from '../features/household/HouseholdGate.js';
 import { api } from '../lib/api.js';
 import { useVersion } from '../lib/version.js';
 
@@ -57,14 +58,20 @@ function Screen() {
   );
 }
 
-/** The waiting room: a real person who signed in but is not in the household yet. */
-function Pending({ email, onSignOut }: { email: string; onSignOut: () => void }) {
+/**
+ * The waiting room: admitted to a home, but not yet by its owner.
+ *
+ * Distinct from having no home at all, which is HouseholdGate. The difference
+ * matters to the person standing there: one of them can act — open a home,
+ * follow a link — and the other can only wait.
+ */
+function Pending({ email, household, onSignOut }: { email: string; household: string; onSignOut: () => void }) {
   return (
     <div className="gate">
       <Icon name="lock" size={28} />
       <div className="wordmark" style={{ fontSize: 'var(--t-sub)', marginTop: 'var(--s4)' }}>ממתינים לאישור</div>
       <p>
-        נכנסתם בתור <span className="n" style={{ fontSize: '.95em' }}>{email}</span>.
+        נכנסתם ל<b>{household}</b> בתור <span className="n" style={{ fontSize: '.95em' }}>{email}</span>.
         <br />
         בעל הבית צריך לאשר את החשבון. בקשו ממנו לפתוח «הגדרות» ← «מי בבית».
       </p>
@@ -109,14 +116,14 @@ function StuckDialog({ onReload }: { onReload: () => void }) {
 }
 
 function Shell() {
-  const { user, loading, signOut } = useSession();
+  const { user, loading, signOut, refresh } = useSession();
   const { stuck, reload } = useVersion();
   const [openItems, setOpenItems] = useState(0);
 
   // The one number worth knowing without opening a screen: is there anything
   // to buy. It rides in the nav so the answer costs no navigation.
   useEffect(() => {
-    if (!user || user.role === 'pending') return;
+    if (!user || user.household_id === null || user.role === 'pending') return;
     let cancelled = false;
     const load = () => {
       api.get<{ id: number }[]>('/shopping/items', { status: 'open' })
@@ -132,7 +139,11 @@ function Shell() {
   if (stuck) return <StuckDialog onReload={reload} />;
   if (loading) return <div className="page" style={{ maxWidth: 640 }}><Loading /></div>;
   if (!user) return <SignIn />;
-  if (user.role === 'pending') return <Pending email={user.email} onSignOut={() => void signOut()} />;
+  // Signed in, but belonging nowhere: open a home, or open an invitation.
+  if (user.household_id === null) return <HouseholdGate onJoined={() => { void refresh(); }} />;
+  if (user.role === 'pending') {
+    return <Pending email={user.email} household={user.household_name ?? ''} onSignOut={() => void signOut()} />;
+  }
 
   return (
     <div className="shell">

@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, setUnauthorizedHandler } from './api.js';
-import type { User } from '@shared/types.js';
+import type { Household, User } from '@shared/types.js';
 
 export interface Member { email: string; display_name: string; color: string | null; role: string }
 
 interface SessionValue {
   user: User | null;
   members: Member[];
+  /** Every home this person belongs to. Empty for someone who belongs to none. */
+  households: Household[];
   loading: boolean;
   googleClientId: string | null;
   refresh: () => Promise<void>;
@@ -14,15 +16,21 @@ interface SessionValue {
 }
 
 const SessionContext = createContext<SessionValue>({
-  user: null, members: [], loading: true, googleClientId: null,
+  user: null, members: [], households: [], loading: true, googleClientId: null,
   refresh: async () => {}, signOut: async () => {},
 });
 
-interface MeResponse { user: User | null; members?: Member[]; google_client_id: string | null }
+interface MeResponse {
+  user: User | null;
+  members?: Member[];
+  households?: Household[];
+  google_client_id: string | null;
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  const [households, setHouseholds] = useState<Household[]>([]);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,6 +39,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const data = await api.get<MeResponse>('/auth/me');
       setUser(data.user);
       setMembers(data.members ?? []);
+      setHouseholds(data.households ?? []);
       setGoogleClientId(data.google_client_id);
     } catch {
       setUser(null);
@@ -50,10 +59,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await api.post('/auth/logout').catch(() => {});
     setUser(null);
     setMembers([]);
+    setHouseholds([]);
   }, []);
 
   return (
-    <SessionContext.Provider value={{ user, members, loading, googleClientId, refresh, signOut }}>
+    <SessionContext.Provider value={{ user, members, households, loading, googleClientId, refresh, signOut }}>
       {children}
     </SessionContext.Provider>
   );
@@ -92,7 +102,7 @@ declare global {
  * every already-signed-in visit would pay for and never use, and this is a
  * screen most sessions never see.
  */
-export function GoogleSignInButton({ clientId, onSignedIn }: { clientId: string; onSignedIn: (user: User) => void }) {
+export function GoogleSignInButton({ clientId, onSignedIn }: { clientId: string; onSignedIn: () => void }) {
   const holder = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -106,8 +116,10 @@ export function GoogleSignInButton({ clientId, onSignedIn }: { clientId: string;
         client_id: clientId,
         callback: (response) => {
           setBusy(true);
-          api.post<{ user: User }>('/auth/google', { credential: response.credential })
-            .then((data) => onSignedIn(data.user))
+          // Signing in says only who you are. Whether you belong to a home is a
+          // separate question, answered by the /auth/me that follows.
+          api.post('/auth/google', { credential: response.credential })
+            .then(() => onSignedIn())
             .catch((err: Error) => setError(err.message))
             .finally(() => setBusy(false));
         },

@@ -27,12 +27,22 @@ export function getPool(): pg.Pool {
     if (!connectionString) {
       throw new Error('DATABASE_URL is not set — the app cannot reach its database.');
     }
+    // Verified TLS unless the connection string says, in as many words, not to.
+    //
+    // Neon serves publicly-trusted certificates, and a serverless function
+    // talking to its database over an unverified session is a database anyone
+    // on the path can read — so this is never relaxed by inference, by an
+    // environment name, or by a NODE_ENV check. The only way off is
+    // `sslmode=disable` written into the URL, which is the Postgres convention
+    // and which a Neon URL never carries: theirs say `sslmode=require`.
+    //
+    // What it is for: a local Postgres, which speaks no TLS at all, so the
+    // isolation tests can run against a real database instead of being skipped.
+    const plaintext = /[?&]sslmode=disable(&|$)/.test(connectionString);
+
     pool = new Pool({
       connectionString,
-      // Neon serves publicly-trusted certificates. Verify them; a serverless
-      // function talking to a database over an unverified TLS session is a
-      // database anyone on the path can read.
-      ssl: { rejectUnauthorized: true },
+      ssl: plaintext ? false : { rejectUnauthorized: true },
       // Serverless: many short-lived instances, each holding a few sockets.
       // A high max here exhausts the Neon connection limit under load.
       max: 5,
