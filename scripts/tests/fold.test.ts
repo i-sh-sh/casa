@@ -113,17 +113,45 @@ test('every screen opens folded', () => {
   }
 });
 
+test('a fold never hides what the person just did', () => {
+  // The regression this exists for reached a real user, and it read as the app
+  // being broken outright: «I fill in the details, press save, and it vanishes
+  // as if I never typed anything». It saved every time. With sections shut by
+  // default, the new row landed inside a folded day — the count went 1 → 2 and
+  // the total changed, both inside the fold — so the screen looked identical.
+  //
+  // Reproduced in a browser against the real build before the fix, and again
+  // after: before, the day stayed shut; after, it opens with the row in it.
+  //
+  // So every screen that both folds and writes must open the section its write
+  // landed in, before reloading.
+  for (const screen of SCREENS) {
+    const source = code(read(screen));
+    const handlers = [...source.matchAll(/on(?:Saved|Added|Done)=\{[\s\S]*?\n\s*\}\}/g)]
+      .map((m) => m[0]);
+    assert.ok(handlers.length > 0, `${screen} has no save handler to check`);
+    assert.ok(
+      handlers.some((h) => /folds\.reveal\(/.test(h)),
+      `${screen} reloads after writing without opening the section the write landed in — `
+      + 'the new row is invisible inside a shut fold',
+    );
+  }
+});
+
 test('what is stored is a decision, never a state', () => {
   // A section nobody has touched must stay absent from storage, so the screen
   // is free to choose a better default next month. Writing the state instead
   // would freeze today's guess into every returning device forever.
   const useFolds = kit.slice(kit.indexOf('export function useFolds'));
   const body = useFolds.slice(0, useFolds.indexOf('\nexport '));
+  // Two writers, and only two: a tap, and the app opening a section because
+  // something just landed in it. Both are decisions; neither is a state.
   const writes = [...body.matchAll(/setItem\(/g)];
-  assert.equal(writes.length, 1, 'the fold map is written from more than one place');
-  // The single write lives inside toggle — the only thing a person does on purpose.
+  assert.equal(writes.length, 2, 'the fold map is written from somewhere unexpected');
   const toggle = body.slice(body.indexOf('const toggle'), body.indexOf('const isOpen'));
-  assert.match(toggle, /setItem\(/, 'the stored map is written somewhere other than an explicit toggle');
+  assert.match(toggle, /setItem\(/, 'an explicit toggle no longer records the decision');
+  const reveal = body.slice(body.indexOf('const reveal'));
+  assert.match(reveal, /setItem\(/, 'revealing a section does not survive the reload it precedes');
 });
 
 test('storage never fails a tap', () => {
@@ -131,7 +159,7 @@ test('storage never fails a tap', () => {
   // on access, and none of them is a reason for a section to refuse to open.
   const useFolds = kit.slice(kit.indexOf('export function useFolds'));
   const body = useFolds.slice(0, useFolds.indexOf('\nexport '));
-  assert.equal([...body.matchAll(/catch/g)].length, 2, 'a localStorage access is unguarded');
+  assert.equal([...body.matchAll(/catch/g)].length, 3, 'a localStorage access is unguarded');
 });
 
 test('the disclosure mark is vertical, so no direction has to be chosen', () => {

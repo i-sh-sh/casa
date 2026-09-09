@@ -164,7 +164,14 @@ export function BudgetScreen() {
           month={month}
           average={averageFor.get(editing.category_id) ?? null}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); budget.reload(); }}
+          onSaved={() => {
+            // The envelope that was just funded is inside a group that may be
+            // shut, where the new number would be invisible. Nothing folds away
+            // what somebody just did.
+            folds.reveal(editing.group_name ?? 'ללא קבוצה');
+            setEditing(null);
+            budget.reload();
+          }}
         />
       )}
     </>

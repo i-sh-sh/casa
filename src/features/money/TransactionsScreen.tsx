@@ -129,8 +129,10 @@ export function TransactionsScreen() {
         <TransactionSheet
           transaction={editing}
           onClose={() => { setAdding(false); setEditing(null); }}
-          onSaved={(what) => {
+          onSaved={(what, day) => {
             setAdding(false); setEditing(null);
+            // Before the reload, so the row is visible the moment it arrives.
+            folds.reveal(day);
             transactions.reload();
             toast.show(what);
           }}
@@ -159,7 +161,8 @@ export function TransactionsScreen() {
 function TransactionSheet({ transaction, onClose, onSaved }: {
   transaction: Transaction | null;
   onClose: () => void;
-  onSaved: (message: string) => void;
+  /** `day` is the date it landed on, so the screen can open that day. */
+  onSaved: (message: string, day: string) => void;
 }) {
   const { user, members } = useSession();
   const accounts = useAsync(() => api.get<Account[]>('/money/accounts'));
@@ -187,7 +190,7 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
     setDeleteError(null);
     try {
       await api.del(`/money/transactions/${transaction!.id}`);
-      onSaved('נמחקה');
+      onSaved('נמחקה', transaction!.occurred_on);
     } catch (err) {
       setDeleting(false);
       setDeleteError(err instanceof Error ? err.message : 'לא הצלחנו למחוק');
@@ -219,10 +222,10 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
           };
           if (editing) {
             await api.patch(`/money/transactions/${transaction.id}`, body);
-            onSaved('עודכנה');
+            onSaved('עודכנה', occurredOn);
           } else {
             await api.post('/money/transactions', body);
-            onSaved('נרשמה');
+            onSaved('נרשמה', occurredOn);
           }
         }}
       >

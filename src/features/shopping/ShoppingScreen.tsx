@@ -166,7 +166,12 @@ export function ShoppingScreen() {
         )}
       </div>
 
-      {adding && <AddItemSheet onClose={() => setAdding(false)} onAdded={() => { setAdding(false); list.reload(); }} />}
+      {adding && (
+        <AddItemSheet
+          onClose={() => setAdding(false)}
+          onAdded={(aisle) => { setAdding(false); folds.reveal(aisle); list.reload(); }}
+        />
+      )}
       {checkingOut && (
         <CheckoutSheet
           count={bought.length}
@@ -223,7 +228,11 @@ function Row({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () =>
   );
 }
 
-function AddItemSheet({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
+function AddItemSheet({ onClose, onAdded }: {
+  onClose: () => void;
+  /** The aisle the server filed it under, so the screen can open it. */
+  onAdded: (aisle: string) => void;
+}) {
   const [name, setName] = useState('');
   const [qty, setQty] = useState('1');
   const [note, setNote] = useState('');
@@ -237,10 +246,13 @@ function AddItemSheet({ onClose, onAdded }: { onClose: () => void; onAdded: () =
           // client_id is what makes a replay safe: adding an item already on
           // the list bumps its quantity, so without it a lost response turns two
           // cartons into four. See db/schema.sql, "Working offline".
-          await api.post('/shopping/items', {
+          // The aisle is the server's to decide — it matches the name against
+          // the pantry — so it comes back on the created row rather than being
+          // guessed here.
+          const created = await api.post<ShoppingItem>('/shopping/items', {
             name, qty: Number(qty) || 1, note: note || undefined, client_id: actionId(),
           });
-          onAdded();
+          onAdded(created.category);
         }}
       >
         <Field label="פריט">

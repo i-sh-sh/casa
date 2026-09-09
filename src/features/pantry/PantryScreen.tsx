@@ -160,14 +160,21 @@ export function PantryScreen() {
         <ProductSheet
           product={editing}
           onClose={() => { setCreating(false); setEditing(null); }}
-          onSaved={() => { setCreating(false); setEditing(null); products.reload(); }}
+          onSaved={(aisle) => {
+            setCreating(false); setEditing(null);
+            folds.reveal(aisle);
+            products.reload();
+          }}
         />
       )}
       {stocking && (
         <StockSheet
           product={stocking}
           onClose={() => setStocking(null)}
-          onSaved={() => { setStocking(null); products.reload(); toast.show('נכנס למזווה'); }}
+          onSaved={() => {
+            folds.reveal(stocking.category);
+            setStocking(null); products.reload(); toast.show('נכנס למזווה');
+          }}
         />
       )}
     </>
@@ -210,7 +217,12 @@ function ProductRow({ product, onConsume, onStock, onEdit }: {
   );
 }
 
-function ProductSheet({ product, onClose, onSaved }: { product: Product | null; onClose: () => void; onSaved: () => void }) {
+function ProductSheet({ product, onClose, onSaved }: {
+  product: Product | null;
+  onClose: () => void;
+  /** The shelf it landed on, so the screen can open it. */
+  onSaved: (aisle: string) => void;
+}) {
   const [name, setName] = useState(product?.name ?? '');
   const [unit, setUnit] = useState(product?.unit ?? 'יח׳');
   const [category, setCategory] = useState(product?.category ?? 'כללי');
@@ -232,7 +244,7 @@ function ProductSheet({ product, onClose, onSaved }: { product: Product | null; 
           };
           if (product) await api.patch(`/pantry/products/${product.id}`, payload);
           else await api.post('/pantry/products', payload);
-          onSaved();
+          onSaved(category);
         }}
       >
         <Field label="שם">

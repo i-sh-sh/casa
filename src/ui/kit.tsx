@@ -285,7 +285,34 @@ export function useFolds(scope: string) {
     [decided],
   );
 
-  return { isOpen, toggle };
+  /**
+   * Opens a section because something just landed in it.
+   *
+   * The bug this exists for was mine, and it made the app look broken in the
+   * plainest way: with sections shut by default, a transaction written into a
+   * folded day left the screen looking *identical*. The row was saved, the
+   * count went from 1 to 2 and the day's total changed — inside a shut fold,
+   * where none of it could be seen. The report was «I fill it in, press save,
+   * and it disappears as if I never typed anything», and that is exactly what
+   * it looked like.
+   *
+   * So: **a fold never hides what the person just did.** Writing, editing or
+   * moving something opens the section it landed in, before the list reloads.
+   *
+   * It writes to the same map a tap writes to. That is deliberate — the app
+   * decided on somebody's behalf, and they undo it by folding the section
+   * again, exactly as they would undo their own tap.
+   */
+  const reveal = useCallback((id: string) => {
+    setDecided((prev) => {
+      if (prev[id] === true) return prev;
+      const next = { ...prev, [id]: true };
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* the row is on screen either way */ }
+      return next;
+    });
+  }, [key]);
+
+  return { isOpen, toggle, reveal };
 }
 
 /**
