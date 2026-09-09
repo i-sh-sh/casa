@@ -269,33 +269,23 @@ export function useFolds(scope: string) {
     });
   }, [key]);
 
-  /** `fallback` is the screen's judgement for a section nobody has ruled on. */
+  /**
+   * `fallback` is the screen's judgement for a section nobody has ruled on.
+   *
+   * It must not be derived from the section's own contents. A default computed
+   * from live data folds the screen under a moving thumb: tick the last item in
+   * an aisle and the aisle judges itself finished and shuts — mid-shop, with
+   * the trolley in the other hand. That was a real bug here, and the fix is
+   * structural rather than defensive: every screen passes a constant, or a
+   * value that only a deliberate act (a search, a filter) can change.
+   * scripts/tests/fold.test.ts refuses anything else.
+   */
   const isOpen = useCallback(
     (id: string, fallback: boolean) => decided[id] ?? fallback,
     [decided],
   );
 
-  /**
-   * Fixes a section's default the first time it is seen, and never again.
-   *
-   * Without this the defaults are live, and a live default folds the screen
-   * under a moving thumb: tick the last item in an aisle, the aisle judges
-   * itself finished, and it shuts — mid-shop, with the trolley in the other
-   * hand. The same shape lies in wait in the pantry, where restocking the last
-   * low product would close the shelf being stood in front of.
-   *
-   * It is the rule the list itself already follows in never re-sorting under a
-   * thumb (docs/DESIGN.md §8): what is on screen may change what it *says*,
-   * never where it *is*. The judgement is made once, on arrival; the next visit
-   * makes it again with fresh eyes.
-   */
-  const settled = useRef<Record<string, boolean>>({});
-  const settle = useCallback((id: string, value: boolean): boolean => {
-    settled.current[id] ??= value;
-    return settled.current[id]!;
-  }, []);
-
-  return { isOpen, toggle, settle };
+  return { isOpen, toggle };
 }
 
 /**

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { Link } from '../../lib/router.js';
 import { useSession } from '../../lib/session.js';
-import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS, monthKey } from '@shared/money.js';
@@ -10,11 +10,24 @@ import type { Account, Category, Transaction } from '@shared/types.js';
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+/**
+ * A month of transactions, read as days.
+ *
+ * Flat, this screen was ninety rows in a scroll: every purchase of every day
+ * with nothing between them but a date heading, and no way to answer the
+ * question anybody actually opens it with — «כמה יצא ביום שישי». The rows are
+ * the record; the days are what is read.
+ *
+ * So each day folds, and shut it says the two things worth knowing: how many
+ * movements, and what they came to. Opening one is for when the total surprises
+ * you, which is exactly when a list of payees is worth reading.
+ */
 export function TransactionsScreen() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const transactions = useAsync(() => api.get<Transaction[]>('/money/transactions', { month }), [month]);
   const [adding, setAdding] = useState(false);
   const toast = useToast();
+  const folds = useFolds('transactions');
 
   const items = transactions.data ?? [];
   const byDay = items.reduce<Record<string, Transaction[]>>((acc, t) => {
@@ -51,29 +64,43 @@ export function TransactionsScreen() {
           />
         )}
 
-        {Object.entries(byDay).map(([day, dayItems]) => (
-          <section className="section" key={day}>
-            <h2>
-              {new Date(`${day}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
-              <span className="count">· ₪</span>
-            </h2>
-            <div className="rows">
-              {dayItems.map((t) => (
-                <div className="row" key={t.id}>
-                  <span className="grow">
-                    <span className="title" style={{ display: 'block' }}>{t.payee || t.category_name || 'ללא שם'}</span>
-                    <span className="meta">
-                      {t.category_name ?? 'לא משויך'} · {t.account_name}
+        {Object.entries(byDay).map(([day, dayItems]) => {
+          const dayTotal = dayItems.reduce((sum, t) => sum + t.amount, 0);
+          return (
+            <Fold
+              key={day}
+              id={day}
+              title={new Date(`${day}T00:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long' })}
+              count={<span className="n">{dayItems.length}</span>}
+              // The day's total, in the same column the rows hang their amounts
+              // in — so a shut month reads as one ruled column of days, which
+              // is the view this screen never had.
+              note={
+                <span className={`n amount ${dayTotal < 0 ? 'over' : ''}`}>
+                  {formatILS(dayTotal, { sign: true, symbol: false })}
+                </span>
+              }
+              open={folds.isOpen(day, false)}
+              onToggle={() => folds.toggle(day, false)}
+            >
+              <div className="rows">
+                {dayItems.map((t) => (
+                  <div className="row" key={t.id}>
+                    <span className="grow">
+                      <span className="title" style={{ display: 'block' }}>{t.payee || t.category_name || 'ללא שם'}</span>
+                      <span className="meta">
+                        {t.category_name ?? 'לא משויך'} · {t.account_name}
+                      </span>
                     </span>
-                  </span>
-                  {/* Income is not green. It is simply not negative — which in a
-                      ledger is the whole distinction, and the only one needed. */}
-                  <span className="n amount">{formatILS(t.amount, { sign: true, agorot: true, symbol: false })}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
+                    {/* Income is not green. It is simply not negative — which in a
+                        ledger is the whole distinction, and the only one needed. */}
+                    <span className="n amount">{formatILS(t.amount, { sign: true, agorot: true, symbol: false })}</span>
+                  </div>
+                ))}
+              </div>
+            </Fold>
+          );
+        })}
 
         {items.length > 0 && (
           <>

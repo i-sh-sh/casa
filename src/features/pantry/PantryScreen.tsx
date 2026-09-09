@@ -47,24 +47,21 @@ export function PantryScreen() {
   }, {});
 
   /**
-   * Which aisles start shut.
+   * The pantry opens as an index: every shelf shut, each one saying how much is
+   * on it and how much of that needs doing.
    *
-   * A pantry of fifteen products is a list and reads fine open; a pantry of
-   * sixty is eight aisles deep, and the two things that need doing are
-   * somewhere in the middle of them. So the fold earns its tap only past a
-   * threshold — below it, shutting sections would be a tax with nothing bought.
+   * What makes that safe rather than merely tidy is the red note on the shut
+   * header. «2 לטיפול» is the thing the screen exists to say, and it is said
+   * before anything is opened — so shutting the shelf hides the detail and
+   * never the signal.
    *
-   * Two exceptions, and they are the point of the whole screen. **An aisle
-   * holding something that ran out or is going off is never shut by default**,
-   * because hiding exactly what the screen exists to surface would be a worse
-   * screen with a tidier first impression. And a deliberate narrowing — a
-   * filter, a search — opens everything: somebody who typed «חלב» is asking to
-   * see it, not to be told which aisle it is in.
+   * The one thing that overrides it is a deliberate narrowing. Somebody who
+   * typed «חלב», or tapped «נגמר», is asking to see the products — not to be
+   * told which shelf they are on. Note that this is the only live input to the
+   * default, and it can only ever *open*: nothing here can shut a section that
+   * a thumb is already working in.
    */
   const narrowing = filter !== 'all' || search.trim() !== '';
-  const crowded = shown.length > 12;
-  const defaultOpen = (needsAttention: boolean) =>
-    narrowing || !crowded || needsAttention;
 
   async function consume(product: Product, qty: number) {
     // Optimistic, then reconciled. Nothing stands between the tap and the
@@ -125,7 +122,7 @@ export function PantryScreen() {
           const needs = aisleProducts.filter(
             (p) => p.below_min || expiryState(p.next_expiry, today()) !== 'ok',
           ).length;
-          const fallback = defaultOpen(folds.settle(aisle, needs > 0));
+          const fallback = narrowing;
           return (
             <Fold
               key={aisle}

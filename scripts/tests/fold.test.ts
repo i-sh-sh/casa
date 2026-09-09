@@ -20,6 +20,7 @@ const SCREENS = [
   'src/features/pantry/PantryScreen.tsx',
   'src/features/shopping/ShoppingScreen.tsx',
   'src/features/money/BudgetScreen.tsx',
+  'src/features/money/TransactionsScreen.tsx',
 ] as const;
 
 /**
@@ -46,17 +47,69 @@ test('a shut section still says what is inside it', () => {
   }
 });
 
+/**
+ * Every `<Fold>` on a screen, with the block of code that renders it.
+ *
+ * The block runs from the `.map(` that produces the sections to the closing
+ * tag, so everything declared inside it — the counts, the totals, the flags —
+ * is exactly what the default is forbidden to see.
+ */
+function foldBlocks(source: string): { block: string; locals: string[]; fallback: string }[] {
+  return [...source.matchAll(/\.map\(\(([\s\S]*?)<\/Fold>/g)].map((match) => {
+    const block = match[1]!;
+    const locals = [...block.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=/g)].map((m) => m[1]!);
+    // The section's own bindings: `([aisle, aisleProducts])`, `(item)`.
+    const params = [...(/^\s*[([]([^)\]]*)[\])]/.exec(block)?.[1] ?? '').matchAll(/[A-Za-z_$][\w$]*/g)]
+      .map((m) => m[0]);
+    const call = /folds\.isOpen\([^,]+,\s*([^)]*)\)/.exec(block);
+    assert.ok(call, 'a <Fold> renders without folds.isOpen');
+    let fallback = call![1]!.trim();
+    // One level of indirection: `open={folds.isOpen(id, fallback)}` with
+    // `const fallback = …` above it is the shape every screen uses.
+    const bound = new RegExp(`\\bconst\\s+${fallback}\\s*=\\s*([^;]*);`).exec(block);
+    if (bound) fallback = bound[1]!.trim();
+    return { block, locals: [...locals, ...params].filter((n) => n !== call![1]!.trim()), fallback };
+  });
+}
+
 test('nothing folds under a moving thumb', () => {
-  // Ticking the last item in an aisle must not fold the aisle. The defaults are
-  // computed from live data, so every screen has to pin its judgement with
-  // `settle` — which fixes it the first time a section is seen. docs/DESIGN.md
-  // §8: what is on screen may change what it says, never where it is.
+  // The real bug this replaces: defaults derived from the section's contents.
+  // Tick the last item in an aisle and the aisle judged itself finished and
+  // shut — mid-shop, under the thumb that ticked it. Allocate money that clears
+  // an overspend and the budget group folded away from the person fixing it.
+  //
+  // The first fix carried the judgement in a ref. The better one is that there
+  // is nothing to carry: a default that cannot see the rows cannot react to
+  // them. So the rule is positional rather than syntactic — the fallback may
+  // not name anything declared inside the block that renders the sections.
+  // A screen-level flag (a search, a filter) is fine: only a deliberate act
+  // changes it, and it can only ever open.
+  //
+  // The first version of this test checked the *name* passed to isOpen rather
+  // than what that name was bound to, and passed happily against both bugs.
   for (const screen of SCREENS) {
-    const source = code(read(screen));
-    assert.match(
-      source, /folds\.settle\(/,
-      `${screen} judges its folds from live data — a section can collapse under a tap`,
-    );
+    const blocks = foldBlocks(code(read(screen)));
+    assert.ok(blocks.length > 0, `${screen} has no folds`);
+    for (const { locals, fallback } of blocks) {
+      for (const local of locals) {
+        assert.ok(
+          !new RegExp(`\\b${local}\\b`).test(fallback),
+          `${screen} judges a fold by \`${local}\`, which is computed from the section's own rows — `
+          + `the section can collapse under a tap (default: \`${fallback}\`)`,
+        );
+      }
+    }
+  }
+});
+
+test('every screen opens folded', () => {
+  // The app opens as an index and expands on request. The only thing that may
+  // override that is a deliberate narrowing, which opens sections and never
+  // shuts one.
+  for (const screen of SCREENS) {
+    for (const { fallback } of foldBlocks(code(read(screen)))) {
+      assert.notEqual(fallback, 'true', `${screen} opens a section by default`);
+    }
   }
 });
 

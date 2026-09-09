@@ -112,15 +112,15 @@ export function BudgetScreen() {
             {Object.entries(groups).map(([groupName, envelopes]) => {
               const left = envelopes.reduce((s, e) => s + e.available, 0);
               const over = envelopes.filter((e) => e.available < 0).length;
-              // A group holding an overspend is never shut by default, and the
-              // judgement is settled on arrival — otherwise allocating money to
-              // clear the overspend would fold the group being worked on.
-              // Tidying
-              // the screen by hiding the one line that says «חריגה» would be
-              // the budget lying by omission — and an unfolded budget is eight
-              // groups deep, which is precisely why most months only need the
-              // eight totals.
-              const fallback = folds.settle(groupName, over > 0 || Object.keys(groups).length <= 3);
+              // Eight groups, eight totals, and the month is legible without
+              // opening anything. «חריגה» rides on the shut header beside the
+              // group's remaining balance, so folding hides the envelopes and
+              // never the fact that one of them is over.
+              //
+              // Constant, never derived from the envelopes: a default reading
+              // `over` would fold the group under the thumb of whoever had just
+              // allocated the money that cleared the overspend.
+              const fallback = false;
               return (
                 <Fold
                   key={groupName}

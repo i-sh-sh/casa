@@ -125,15 +125,14 @@ export function ShoppingScreen() {
         {Object.entries(byAisle).map(([aisle, aisleItems]) => {
           const left = aisleItems.filter((i) => i.status === 'open').length;
           // Here the fold means something it means nowhere else in the app:
-          // *done with this one*. So an aisle starts open — you are standing in
-          // it — and an aisle with nothing left to pick up starts shut, which
-          // is the list getting shorter as the trolley fills.
+          // *done with this one*. The list opens as the aisles you still have
+          // to walk, each with its count — you open one, clear it, shut it, and
+          // move on, which is how the shop is actually walked.
           //
-          // `settle` is what keeps that from happening under a moving thumb:
-          // the judgement is fixed when the aisle first appears, so ticking the
-          // last item leaves it open — exactly as the list refuses to re-sort
-          // itself mid-shop — and it opens folded on the next visit.
-          const fallback = folds.settle(aisle, left > 0);
+          // Constant, never derived from what is left: a default that read the
+          // count would shut an aisle the moment its last item was ticked,
+          // under the thumb that ticked it.
+          const fallback = false;
           return (
             <Fold
               key={aisle}

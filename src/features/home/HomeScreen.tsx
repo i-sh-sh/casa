@@ -19,6 +19,19 @@ function greeting(): string {
 interface ExpiringEntry { product_name: string; days_left: number; unit: string; qty: number }
 
 /**
+ * A run of names, and an honest account of the ones left out.
+ *
+ * Five names is as much as one line of an entry can hold before it stops being
+ * readable at a glance. Cutting silently at five was the wrong half of that
+ * trade: the count in the margin said eleven and the line showed five, which
+ * reads as a bug rather than as a summary.
+ */
+function run(names: string[], max = 5): string {
+  if (names.length <= max) return names.join(' · ');
+  return `${names.slice(0, max).join(' · ')} · ועוד ${names.length - max}`;
+}
+
+/**
  * The front page of the ledger: what needs attention today, and nothing else.
  *
  * The temptation on a home dashboard is to show everything the system knows —
@@ -38,6 +51,13 @@ export function HomeScreen() {
   const low = useAsync(() => api.get<Product[]>('/pantry/products', { below_min: '1' }));
 
   const loading = budget.loading && shopping.loading && expiring.loading;
+  // Every panel, not three of them. `quiet` used to be gated on `loading`,
+  // which ignored bills and low stock — so a house with a bill due tomorrow
+  // announced «אין מה לעשות היום» for as long as that request took, and then
+  // contradicted itself. The comment below already forbade exactly this; the
+  // gate simply did not cover the panels added after it was written.
+  const settling = budget.loading || shopping.loading || expiring.loading
+    || bills.loading || low.loading;
   const soonBills = (bills.data ?? []).filter((b) => {
     if (!b.active || b.autopay) return false;
     const days = Math.round((new Date(b.next_due).getTime() - Date.now()) / 86_400_000);
@@ -53,7 +73,7 @@ export function HomeScreen() {
     bills.reload(); low.reload();
   };
 
-  const quiet = !loading && !failure
+  const quiet = !settling && !failure
     && (shopping.data?.length ?? 0) === 0
     && (expiring.data?.length ?? 0) === 0
     && soonBills.length === 0;
@@ -105,7 +125,7 @@ export function HomeScreen() {
             to="/shopping"
             label="לקנות"
             count={shopping.data?.length ?? 0}
-            body={(shopping.data ?? []).slice(0, 5).map((i) => i.name).join(' · ')}
+            body={run((shopping.data ?? []).map((i) => i.name))}
             note={(low.data?.length ?? 0) > 0 ? `${low.data?.length} מהם נגמרו במזווה` : undefined}
           />
         )}
@@ -116,8 +136,8 @@ export function HomeScreen() {
             label="להשתמש לפני שיתקלקל"
             count={expiring.data?.length ?? 0}
             tone="red"
-            body={(expiring.data ?? []).slice(0, 5).map((e) =>
-              `${e.product_name} (${e.days_left <= 0 ? 'היום' : `${e.days_left} ימים`})`).join(' · ')}
+            body={run((expiring.data ?? []).map((e) =>
+              `${e.product_name} (${e.days_left <= 0 ? 'היום' : `${e.days_left} ימים`})`))}
           />
         )}
 
@@ -127,7 +147,7 @@ export function HomeScreen() {
             label="חשבונות שמגיעים"
             count={soonBills.length}
             tone="red"
-            body={soonBills.map((b) => `${b.name}${b.amount_estimate ? ` · ${formatILS(b.amount_estimate)}` : ''}`).join(' · ')}
+            body={run(soonBills.map((b) => `${b.name}${b.amount_estimate ? ` · ${formatILS(b.amount_estimate)}` : ''}`))}
           />
         )}
       </div>
