@@ -60,6 +60,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUser(null);
     setMembers([]);
     setHouseholds([]);
+    // The cached shopping list has to go with the session. Otherwise the next
+    // person to open the app on this phone sees the previous household's list
+    // before a single request is made.
+    try {
+      navigator.serviceWorker?.controller?.postMessage('casa:forget');
+      localStorage.removeItem('casa.outbox.v1');
+    } catch { /* no service worker, or storage refused */ }
   }, []);
 
   return (

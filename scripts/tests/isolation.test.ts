@@ -451,3 +451,107 @@ test('the export carries one household only, and reads as Hebrew', options, asyn
   }
 
 });
+
+test('replaying an add does not double the quantity', options, async () => {
+  // The supermarket case: the request left, the response never came back, and
+  // the phone retries. Adding an item that is already on the list *bumps* its
+  // quantity, so without the client id this turns two cartons of milk into
+  // four — silently, and only noticed at the till or in the pantry.
+  const client = await freshDatabase();
+  try {
+    await twoHomes(client);
+
+    const add = (clientId: string | null, qty: number) => asHousehold(client, 1, async () => {
+      // The handler's logic, in the order it runs it.
+      if (clientId) {
+        const seen = await client.query(`SELECT id FROM shopping_items WHERE client_id = $1`, [clientId]);
+        if (seen.rows[0]) return;
+      }
+      const open = await client.query<{ id: number }>(
+        `SELECT id FROM shopping_items WHERE status = 'open' AND product_id IS NULL AND name_key = $1`, ['חלב']);
+      if (open.rows[0]) {
+        await client.query(
+          `UPDATE shopping_items SET qty = qty + $2, client_id = COALESCE($3, client_id) WHERE id = $1`,
+          [open.rows[0].id, qty, clientId]);
+        return;
+      }
+      await client.query(
+        `INSERT INTO shopping_items (name, name_key, qty, client_id) VALUES ('חלב','חלב',$1,$2)`,
+        [qty, clientId]);
+    });
+
+    await add('tap-1', 2);
+    await add('tap-1', 2);   // the replay
+    await add('tap-1', 2);   // and again, because reception is bad
+
+    const qty = await asHousehold(client, 1, async () =>
+      (await client.query<{ qty: number }>(`SELECT qty FROM shopping_items WHERE name_key = 'חלב'`)).rows[0]?.qty);
+    assert.equal(qty, 2, 'the replay doubled the quantity');
+
+    // A genuinely separate tap still bumps, which is the behaviour we want to
+    // keep: two rows of «חלב» is how a list stops being scannable.
+    await add('tap-2', 3);
+    const after = await asHousehold(client, 1, async () =>
+      (await client.query<{ qty: number }>(`SELECT qty FROM shopping_items WHERE name_key = 'חלב'`)).rows[0]?.qty);
+    assert.equal(after, 5);
+
+    const rows = await asHousehold(client, 1, async () =>
+      (await client.query(`SELECT id FROM shopping_items`)).rows.length);
+    assert.equal(rows, 1, 'a second line was created');
+  } finally {
+    await client.end();
+  }
+});
+
+test('the same client id in two households is two different items', options, async () => {
+  // The uniqueness is per household. Two phones can mint the same id — they are
+  // random, but the guarantee has to hold without trusting that.
+  const client = await freshDatabase();
+  try {
+    await twoHomes(client);
+    await asHousehold(client, 1, () => client.query(
+      `INSERT INTO shopping_items (name, name_key, client_id) VALUES ('לחם','לחם','same')`));
+    await asHousehold(client, 2, () => client.query(
+      `INSERT INTO shopping_items (name, name_key, client_id) VALUES ('לחם','לחם','same')`));
+
+    for (const home of [1, 2]) {
+      const n = await asHousehold(client, home, async () =>
+        (await client.query(`SELECT id FROM shopping_items WHERE client_id = 'same'`)).rows.length);
+      assert.equal(n, 1, `household ${home} sees the wrong number of items`);
+    }
+  } finally {
+    await client.end();
+  }
+});
+
+test('a tick replayed after a lost response does not stock twice', options, async () => {
+  // This one is safe by accident and must stay that way: the handler matches
+  // `status = 'open'`, which a successful first attempt has already cleared.
+  const client = await freshDatabase();
+  try {
+    await twoHomes(client);
+    await asHousehold(client, 1, () => client.query(`
+      INSERT INTO products (name, name_key, min_qty) VALUES ('חלב 3%','חלב 3%',2);
+      INSERT INTO shopping_items (name, name_key, product_id, qty)
+        SELECT 'חלב 3%','חלב 3%', id, 2 FROM products;`));
+
+    const buy = () => asHousehold(client, 1, async () => {
+      const item = await client.query<{ id: number; product_id: number; qty: number }>(
+        `SELECT id, product_id, qty FROM shopping_items WHERE status = 'open'`);
+      if (!item.rows[0]) return false;
+      await client.query(`UPDATE shopping_items SET status='bought', bought_at=NOW() WHERE id=$1`, [item.rows[0].id]);
+      await client.query(`INSERT INTO stock_entries (product_id, qty) VALUES ($1,$2)`,
+        [item.rows[0].product_id, item.rows[0].qty]);
+      return true;
+    });
+
+    assert.equal(await buy(), true);
+    assert.equal(await buy(), false, 'the second attempt found something to buy');
+
+    const stocked = await asHousehold(client, 1, async () =>
+      (await client.query<{ total: number }>(`SELECT COALESCE(SUM(qty),0)::float AS total FROM stock_entries`)).rows[0]?.total);
+    assert.equal(stocked, 2, 'the replay stocked the milk twice');
+  } finally {
+    await client.end();
+  }
+});

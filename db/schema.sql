@@ -514,6 +514,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS shopping_items_one_open_per_name
 CREATE UNIQUE INDEX IF NOT EXISTS sent_notifications_once
   ON sent_notifications (household_id, kind, subject_key, sent_on);
 
+-- ─────────────────────────────────────────────────────────────────────────
+-- Working offline in the supermarket
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- Reception inside a shop is not off, it is intermittent: a request leaves and
+-- the response never arrives, and the phone cannot tell whether the server
+-- acted. The queue that replays those requests lives in the client
+-- (shared/outbox.ts); this column is what makes replaying one safe.
+--
+-- It matters most for adding a line, and only there. Adding an item that is
+-- already on the list **bumps its quantity** rather than creating a second row
+-- — deliberately, because two rows of «חלב» is how a list stops being scannable
+-- — so a blind retry turns two cartons into four. Ticking an item off is
+-- already safe by accident: the handler matches `status = 'open'`, which a
+-- successful first attempt has already cleared.
+--
+-- Nullable, because everything that is not a replayable client action still
+-- writes here: the daily min-stock job, and the app before this shipped.
+
+ALTER TABLE shopping_items ADD COLUMN IF NOT EXISTS client_id TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS shopping_items_client_id
+  ON shopping_items (household_id, client_id) WHERE client_id IS NOT NULL;
+
 DO $$
 BEGIN
   -- A CHECK cannot be added with IF NOT EXISTS, and re-adding one that is

@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
+import { actionId, useOutbox } from '../../lib/outbox.js';
 import { useSession } from '../../lib/session.js';
 import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
@@ -37,6 +38,11 @@ export function ShoppingScreen() {
   const [adding, setAdding] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const toast = useToast();
+  const outbox = useOutbox();
+
+  // When the queue empties, the server is the truth again. Until then the
+  // screen is showing what the person did, which is the whole point.
+  useEffect(() => { if (outbox.drained > 0) list.reload(); }, [outbox.drained]);
 
   const items = list.data ?? [];
   const open = items.filter((i) => i.status === 'open');
@@ -50,32 +56,44 @@ export function ShoppingScreen() {
   const setStatus = (id: number, status: ShoppingItem['status']) =>
     list.set((prev) => (prev ?? []).map((i) => (i.id === id ? { ...i, status } : i)));
 
-  async function tick(item: ShoppingItem) {
+  // Every change goes through the queue rather than straight to the server.
+  //
+  // The old version awaited the request and reverted the row when it failed —
+  // which is correct at a desk and exactly backwards in a supermarket, where a
+  // failed request is the normal case and the tick is still true. Now the
+  // screen changes immediately, the action waits its turn, and nothing is
+  // undone because reception was bad in aisle four.
+  function tick(item: ShoppingItem) {
     setStatus(item.id, 'bought');
-    try {
-      const result = await api.post<{ stocked: boolean }>(`/shopping/items/${item.id}/buy`);
-      toast.show(
-        result.stocked ? `${item.name} — נכנס למזווה` : `${item.name} — סומן`,
-        { undo: () => void untick(item) },
-      );
-    } catch (err) {
-      setStatus(item.id, 'open');
-      toast.show(err instanceof Error ? err.message : 'לא הצלחנו לסמן', { tone: 'bad' });
-    }
+    outbox.send({
+      id: actionId(), verb: 'POST',
+      path: `/shopping/items/${item.id}/buy`,
+      subject: `item:${item.id}`,
+    });
+    // Whether it lands in the pantry is knowable from the item itself, so the
+    // message stays true offline — where it used to come from the response.
+    toast.show(
+      item.product_id ? `${item.name} — נכנס למזווה` : `${item.name} — סומן`,
+      { undo: () => untick(item) },
+    );
   }
 
-  async function untick(item: ShoppingItem) {
+  function untick(item: ShoppingItem) {
     setStatus(item.id, 'open');
-    try {
-      await api.post(`/shopping/items/${item.id}/unbuy`);
-    } catch {
-      list.reload();
-    }
+    outbox.send({
+      id: actionId(), verb: 'POST',
+      path: `/shopping/items/${item.id}/unbuy`,
+      subject: `item:${item.id}`,
+    });
   }
 
-  async function remove(item: ShoppingItem) {
+  function remove(item: ShoppingItem) {
     list.set((prev) => (prev ?? []).filter((i) => i.id !== item.id));
-    await api.del(`/shopping/items/${item.id}`).catch(() => list.reload());
+    outbox.send({
+      id: actionId(), verb: 'DELETE',
+      path: `/shopping/items/${item.id}`,
+      subject: `item:${item.id}`,
+    });
   }
 
   return (
@@ -91,6 +109,7 @@ export function ShoppingScreen() {
       />
 
       <div className="page">
+        <OfflineNote />
         {list.loading && !list.data && <Loading />}
         {list.error && <ErrorNote message={list.error} onRetry={list.reload} />}
 
@@ -197,7 +216,12 @@ function AddItemSheet({ onClose, onAdded }: { onClose: () => void; onAdded: () =
         submitLabel="הוספה"
         disabled={!name.trim()}
         onSubmit={async () => {
-          await api.post('/shopping/items', { name, qty: Number(qty) || 1, note: note || undefined });
+          // client_id is what makes a replay safe: adding an item already on
+          // the list bumps its quantity, so without it a lost response turns two
+          // cartons into four. See db/schema.sql, "Working offline".
+          await api.post('/shopping/items', {
+            name, qty: Number(qty) || 1, note: note || undefined, client_id: actionId(),
+          });
           onAdded();
         }}
       >
@@ -279,5 +303,54 @@ function CheckoutSheet({ count, onClose, onDone }: { count: number; onClose: () 
         )}
       </AsyncForm>
     </Sheet>
+  );
+}
+
+
+/**
+ * What the list says about itself when the network is not cooperating.
+ *
+ * Deliberately not an error, and deliberately not a spinner: nothing has gone
+ * wrong. The ticks are real, they are recorded, and they will be sent. The one
+ * thing a person in a supermarket needs to know is that they can keep going —
+ * so the quiet case says exactly that, and only a genuinely stuck action gets
+ * the red pencil.
+ */
+function OfflineNote() {
+  const { online, pending, parked, retry, discard } = useOutbox();
+
+  if (parked.length === 0 && pending === 0 && online) return null;
+
+  return (
+    <section className="section" style={{ marginTop: 0 }}>
+      {(!online || pending > 0) && parked.length === 0 && (
+        <>
+          <hr className="rule" style={{ margin: '0 0 var(--s3)' }} />
+          <p className="meta" style={{ margin: 0 }}>
+            {!online && pending > 0 && <>אין רשת. <span className="n">{pending}</span> פעולות מחכות וישלחו לבד.</>}
+            {!online && pending === 0 && <>אין רשת. הרשימה עובדת, וכל סימון יישמר.</>}
+            {online && pending > 0 && <>שולחים <span className="n">{pending}</span> פעולות…</>}
+          </p>
+          <hr className="rule" style={{ margin: 'var(--s3) 0 0' }} />
+        </>
+      )}
+
+      {parked.length > 0 && (
+        <div className="note-error" role="alert">
+          <div style={{ marginBottom: 'var(--s2)' }}>
+            <b>{parked.length} פעולות לא נשלחו.</b> הרשימה כאן עשויה להיות שונה ממה שיש בשרת.
+          </div>
+          {parked.slice(0, 4).map((a) => (
+            <div className="row" key={a.id} style={{ minHeight: 40, borderBottom: 0 }}>
+              <span className="grow meta">{a.failure}</span>
+              <button className="btn btn-sm btn-quiet" onClick={() => discard(a.id)}>ביטול</button>
+            </div>
+          ))}
+          <button className="btn btn-sm btn-red btn-block" style={{ marginTop: 'var(--s2)' }} onClick={retry}>
+            לנסות שוב
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

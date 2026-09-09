@@ -29,6 +29,23 @@ async function listItems(ctx: Ctx): Promise<ShoppingItem[]> {
  * product is how a shared list becomes slower than a note app, and then unused.
  */
 async function addItem(ctx: Ctx): Promise<ShoppingItem | null> {
+  // The one place a replay does real damage.
+  //
+  // Adding an item that is already on the list bumps its quantity rather than
+  // creating a second row — deliberately, because two lines of «חלב» is how a
+  // list stops being scannable. But that makes a blind retry turn two cartons
+  // into four, and a retry is the normal case in a supermarket: the request
+  // left, the response never came back, and the phone cannot tell whether the
+  // server acted. So an action queued offline carries an id, and a second
+  // arrival of the same id returns what the first one wrote.
+  const clientId = optionalStr(ctx.body['client_id'], 'client_id', 64);
+  if (clientId) {
+    const already = await one<ShoppingItem>(
+      `SELECT * FROM shopping_items WHERE client_id = $1`, [clientId],
+    );
+    if (already) return already;
+  }
+
   const name = str(ctx.body['name'], 'שם הפריט', { max: 100 });
   const nameKey = keyFor(name);
   const explicitProduct = optionalInt(ctx.body['product_id'], 'מוצר');
@@ -47,12 +64,19 @@ async function addItem(ctx: Ctx): Promise<ShoppingItem | null> {
     // Two rows of "חלב" is how a list stops being scannable.
     const bumped = optionalNum(ctx.body['qty'], 'כמות', { min: 0.01, max: 1000 });
     if (!bumped) return existing;
-    return one<ShoppingItem>(`UPDATE shopping_items SET qty = qty + $2 WHERE id = $1 RETURNING *`, [existing.id, bumped]);
+    // The id rides along on the bump as well. Without it the guard above never
+    // matches on a replay, and the quantity climbs once per retry — which is
+    // the exact bug this whole column exists to prevent.
+    return one<ShoppingItem>(
+      `UPDATE shopping_items SET qty = qty + $2, client_id = COALESCE($3, client_id)
+        WHERE id = $1 RETURNING *`,
+      [existing.id, bumped, clientId],
+    );
   }
 
   return one<ShoppingItem>(
-    `INSERT INTO shopping_items (name, name_key, product_id, qty, unit, category, note, source, added_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8) RETURNING *`,
+    `INSERT INTO shopping_items (name, name_key, product_id, qty, unit, category, note, source, added_by, client_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,'manual',$8,$9) RETURNING *`,
     [
       name, nameKey, product?.id ?? null,
       optionalNum(ctx.body['qty'], 'כמות', { min: 0.01, max: 1000 }) ?? 1,
@@ -60,6 +84,7 @@ async function addItem(ctx: Ctx): Promise<ShoppingItem | null> {
       optionalStr(ctx.body['category'], 'מדף', 40) ?? product?.category ?? 'כללי',
       optionalStr(ctx.body['note'], 'הערה', 300),
       ctx.user.email,
+      clientId,
     ],
   );
 }

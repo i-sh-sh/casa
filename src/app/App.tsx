@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, RouterProvider, useRouter } from '../lib/router.js';
 import { GoogleSignInButton, SessionProvider, useSession } from '../lib/session.js';
 import { ToastProvider, Loading } from '../ui/kit.js';
+import { OutboxProvider } from '../lib/outbox.js';
 import { Icon, type IconName } from '../ui/Icon.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { BudgetScreen } from '../features/money/BudgetScreen.js';
@@ -158,7 +159,10 @@ export default function App() {
     <RouterProvider>
       <SessionProvider>
         <ToastProvider>
-          <Shell />
+          {/* Inside the session, because a queued action is one household's. */}
+          <OutboxProvider>
+            <Shell />
+          </OutboxProvider>
         </ToastProvider>
       </SessionProvider>
     </RouterProvider>
