@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { OAuth2Client } from 'google-auth-library';
-import { one, query, transaction } from './db.js';
+import { one, query, transaction, withHousehold } from './db.js';
+import { SEED_SQL } from '../admin/_seed.js';
 import { forbidden, unauthorized } from './http.js';
 
 // Sign-in is Google-only. There is no shared password anywhere in this file,
@@ -331,7 +332,7 @@ export async function upsertUserOnSignIn(
  * the scope that everything else runs inside.
  */
 export async function createHousehold(name: string, email: string): Promise<Membership> {
-  return await transaction(async (client) => {
+  const membership = await transaction(async (client) => {
     const created = await client.query<{ id: number; name: string }>(
       `INSERT INTO households (name, created_by) VALUES ($1, $2) RETURNING id, name`,
       [name, email],
@@ -344,4 +345,38 @@ export async function createHousehold(name: string, email: string): Promise<Memb
     );
     return { household_id: home.id, household_name: home.name, role: 'owner' as Role };
   });
+
+  await furnish(membership.household_id);
+  return membership;
+}
+
+/**
+ * A new home arrives furnished.
+ *
+ * The seed has existed since the first week, with a comment on it that argues
+ * its own case better than this one can: «an empty budget is not a blank canvas
+ * — it is homework». It was reachable from exactly one place: a button in
+ * settings, visible to owners only, labelled «זריעת קטגוריות ומוצרי ברירת
+ * מחדל». A couple opening casa for the first time was never going to find that,
+ * and what they got instead was every screen empty at once — no categories to
+ * budget, no account to hang a transaction on, no products to shop for. The
+ * first evening decides whether there is a second one, and that first evening
+ * was homework.
+ *
+ * It is done here rather than in the route so that it belongs to *creating a
+ * home*, not to one path that creates one. Anything that opens a household in
+ * future inherits it without having to remember.
+ *
+ * **A failure here does not fail the creation.** The home exists, the person is
+ * its owner, and the seed is idempotent — every statement is ON CONFLICT DO
+ * NOTHING, so the settings button fixes it with one press. Refusing to open a
+ * home because we could not pre-fill its shopping list would be the wrong trade
+ * in every direction.
+ */
+async function furnish(householdId: number): Promise<void> {
+  try {
+    await withHousehold(householdId, () => query(SEED_SQL));
+  } catch (err) {
+    console.error('could not furnish new household', householdId, err);
+  }
 }

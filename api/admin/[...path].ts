@@ -74,9 +74,14 @@ function charContext(sql: string, position: number): string {
  * Refuses to run once there is anything to lose.
  */
 async function seed() {
+  // Since 0.3.9 a new home is furnished at creation (api/_lib/auth.ts), so this
+  // button is the repair path rather than the way in: a home that predates that
+  // change, or one whose seeding failed and was logged. It still refuses to run
+  // over an existing budget — the seed adds, it does not reconcile, and a couple
+  // who renamed «יומיום» would get both.
   const existing = await one<{ count: number }>(`SELECT COUNT(*)::int AS count FROM categories`);
   if ((existing?.count ?? 0) > 0) {
-    throw badRequest('כבר יש קטגוריות במערכת — הזריעה רצה רק על מסד ריק');
+    throw badRequest('כבר יש קטגוריות בבית הזה — הזריעה רצה רק על בית ריק');
   }
   // Deliberately NOT its own connection. Taking one from the pool would land
   // on a connection with no `casa.household_id`, where household_id defaults to
