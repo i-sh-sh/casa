@@ -82,7 +82,16 @@ function Pending({ email, household, onSignOut }: { email: string; household: st
 }
 
 function SignIn() {
-  const { googleClientId, refresh } = useSession();
+  const { googleClientId, failure, refresh } = useSession();
+
+  // Three states, and telling them apart is the whole point of this component.
+  //
+  // It used to have two: a button, or «חסר GOOGLE_CLIENT_ID». So a database
+  // that would not connect — a wrong password, a role without privileges, a
+  // half-finished deploy — rendered as a confident, specific, wrong claim about
+  // Google, and sent us to reconfigure something that was never broken.
+  //
+  // A screen may say "the server did not answer". It may not invent the reason.
   return (
     <div className="gate">
       <div className="wordmark">קאסה</div>
@@ -90,13 +99,21 @@ function SignIn() {
         התקציב, המזווה ורשימת הקניות. פנקס אחד, לשנינו.
       </p>
       <hr className="rule" style={{ margin: '0 0 var(--s5)' }} />
-      {googleClientId
-        ? <GoogleSignInButton clientId={googleClientId} onSignedIn={() => { void refresh(); }} />
-        : (
-          <p style={{ color: 'var(--red)' }}>
-            חסר <span className="n">GOOGLE_CLIENT_ID</span> בהגדרות השרת — בלעדיו אי אפשר להיכנס.
-          </p>
-        )}
+
+      {failure ? (
+        <>
+          <p style={{ color: 'var(--red)' }}>השרת לא ענה, אז אי אפשר להיכנס כרגע.</p>
+          <p className="meta n" style={{ fontSize: 13, marginBottom: 'var(--s4)' }}>{failure}</p>
+          <button className="btn btn-block" onClick={() => void refresh()}>לנסות שוב</button>
+        </>
+      ) : googleClientId ? (
+        <GoogleSignInButton clientId={googleClientId} onSignedIn={() => { void refresh(); }} />
+      ) : (
+        <p style={{ color: 'var(--red)' }}>
+          השרת ענה, אבל בלי <span className="n">GOOGLE_CLIENT_ID</span> — בלעדיו אי אפשר להיכנס.
+          בדקו את משתני הסביבה ב-Vercel.
+        </p>
+      )}
     </div>
   );
 }

@@ -6,6 +6,11 @@ export interface Member { email: string; display_name: string; color: string | n
 
 interface SessionValue {
   user: User | null;
+  /**
+   * Why the session could not be loaded, when that is the reason there is no
+   * user. Null both when signed out normally and when signed in.
+   */
+  failure: string | null;
   members: Member[];
   /** Every home this person belongs to. Empty for someone who belongs to none. */
   households: Household[];
@@ -16,7 +21,7 @@ interface SessionValue {
 }
 
 const SessionContext = createContext<SessionValue>({
-  user: null, members: [], households: [], loading: true, googleClientId: null,
+  user: null, failure: null, members: [], households: [], loading: true, googleClientId: null,
   refresh: async () => {}, signOut: async () => {},
 });
 
@@ -32,8 +37,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [households, setHouseholds] = useState<Household[]>([]);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  /**
+   * The failure is kept, not swallowed.
+   *
+   * This `catch` used to do nothing but `setUser(null)`, which meant every
+   * possible failure of /auth/me — a database that will not connect, a role
+   * without privileges, a deploy half-finished — rendered as the sign-in screen
+   * announcing «חסר GOOGLE_CLIENT_ID». That message was confident, specific and
+   * wrong, and it sent us to reconfigure Google while the actual problem was a
+   * connection string. An error message that names the wrong cause is worse
+   * than one that admits it does not know.
+   */
   const refresh = useCallback(async () => {
     try {
       const data = await api.get<MeResponse>('/auth/me');
@@ -41,8 +58,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setMembers(data.members ?? []);
       setHouseholds(data.households ?? []);
       setGoogleClientId(data.google_client_id);
-    } catch {
+      setFailure(null);
+    } catch (err) {
       setUser(null);
+      setFailure(err instanceof Error ? err.message : 'לא הצלחנו לטעון את הסשן');
     } finally {
       setLoading(false);
     }
@@ -58,6 +77,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     await api.post('/auth/logout').catch(() => {});
     setUser(null);
+    setFailure(null);
     setMembers([]);
     setHouseholds([]);
     // The cached shopping list has to go with the session. Otherwise the next
@@ -70,7 +90,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <SessionContext.Provider value={{ user, members, households, loading, googleClientId, refresh, signOut }}>
+    <SessionContext.Provider value={{ user, failure, members, households, loading, googleClientId, refresh, signOut }}>
       {children}
     </SessionContext.Provider>
   );

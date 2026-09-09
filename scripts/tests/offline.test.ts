@@ -91,3 +91,23 @@ test('a tick is queued, not awaited and reverted', () => {
   assert.match(screen, /function tick\(item: ShoppingItem\) \{[\s\S]{0,400}outbox\.send\(/);
   assert.doesNotMatch(screen, /setStatus\(item\.id, 'open'\);\s*\n\s*toast\.show\([^)]*tone: 'bad'/);
 });
+
+test('the sign-in screen does not invent a reason it cannot know', () => {
+  // It used to have two states: a button, or «חסר GOOGLE_CLIENT_ID». So every
+  // failure of /auth/me — a database that would not connect, a role without
+  // privileges — rendered as a confident, specific, wrong claim about Google,
+  // and sent us to reconfigure something that was never broken.
+  const session = read('src/lib/session.tsx');
+  const app = read('src/app/App.tsx');
+
+  // The failure is kept rather than swallowed.
+  assert.match(session, /setFailure\(err instanceof Error \? err\.message/);
+  assert.doesNotMatch(session, /\} catch \{\s*\n\s*setUser\(null\);\s*\n\s*\}/,
+    'the catch must not discard the reason');
+
+  // And the screen distinguishes "the server did not answer" from "the server
+  // answered without a client id".
+  assert.match(app, /failure \?/);
+  assert.match(app, /השרת לא ענה/);
+  assert.match(app, /השרת ענה, אבל בלי/);
+});
