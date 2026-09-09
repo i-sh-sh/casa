@@ -9,6 +9,7 @@ import { badRequest, forbidden, handler, json, notFound, unauthorized } from '..
 import { body as parseBody } from '../_lib/http.js';
 import { str } from '../_lib/validate.js';
 import { one, query, transaction } from '../_lib/db.js';
+import { isOperator } from '../../shared/operators.js';
 
 // The endpoints that cannot themselves require a household, which is why they
 // live outside the module routers.
@@ -46,10 +47,15 @@ async function me(req: VercelRequest, res: VercelResponse): Promise<void> {
     return;
   }
 
+  // Whether to offer the pilot screen at all. It is a hint for the interface,
+  // never the authorisation: /api/admin/metrics checks the same list itself, so
+  // a forged `is_operator` in a response buys nothing.
+  const is_operator = isOperator(process.env.CASA_OPERATORS, user.email);
+
   const households = await membershipsOf(user.email);
 
   if (user.household_id === null) {
-    json(res, 200, { user, members: [], households, google_client_id });
+    json(res, 200, { user, members: [], households, google_client_id, is_operator });
     return;
   }
 
@@ -65,7 +71,7 @@ async function me(req: VercelRequest, res: VercelResponse): Promise<void> {
       ORDER BY m.joined_at`,
     [user.household_id],
   );
-  json(res, 200, { user, members, households, google_client_id });
+  json(res, 200, { user, members, households, google_client_id, is_operator });
 }
 
 /** Opens a new home. Anyone signed in may — they can only ever see their own. */

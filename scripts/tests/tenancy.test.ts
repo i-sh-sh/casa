@@ -189,7 +189,10 @@ test('no handler takes its own connection', () => {
   assert.deepEqual(offenders, [], `these take an unscoped connection: ${offenders.join(', ')}`);
 });
 
-test('the household scope is opened in exactly two places', () => {
+test('the household scope is opened in exactly three places', () => {
+  // The list is short on purpose and grows only with a reason written beside
+  // the entry. Opening a scope is choosing whose data a piece of code is about,
+  // so every place that does it is a place that could choose wrong.
   const callers = apiFiles()
     .filter((f) => /withHousehold\(/.test(f.source))
     .map((f) => f.path)
@@ -197,6 +200,13 @@ test('the household scope is opened in exactly two places', () => {
   assert.deepEqual(callers, [
     join('api', '_lib', 'router.ts'),    // every request
     join('api', 'cron', 'daily.ts'),     // no signed-in person, so it walks the homes itself
+    // The operator's pilot screen, which walks the homes for the same reason
+    // the cron does: there is no one household in question. It is here — rather
+    // than reading across homes by way of a policy exception — precisely so
+    // that this list remains the whole story. What it may read once inside is a
+    // separate rule, enforced in scripts/tests/metrics.test.ts: counts and
+    // dates, never content.
+    join('api', 'admin', '_metrics.ts'),
   ].sort());
 });
 

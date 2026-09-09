@@ -18,7 +18,7 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 export function SettingsScreen() {
-  const { user, households, signOut } = useSession();
+  const { user, households, signOut, isOperator } = useSession();
   const accounts = useAsync(() => api.get<Account[]>('/money/accounts'));
   const [addingAccount, setAddingAccount] = useState(false);
   const isOwner = user?.role === 'owner';
@@ -74,6 +74,9 @@ export function SettingsScreen() {
         {isOwner && <MembersSection currentEmail={user.email} />}
         {isOwner && <InviteSection />}
         {isOwner && <DatabaseSection />}
+
+        {/* Only the operator, and only ever counts. See api/admin/_metrics.ts. */}
+        {isOperator && <PilotSection />}
 
         <section className="section">
           <h2>מדריך</h2>
@@ -197,6 +200,103 @@ function VersionSection() {
           עדכון לגרסה {serverVersion}
         </button>
       )}
+    </section>
+  );
+}
+
+interface HouseholdMetrics {
+  household_id: number;
+  name: string;
+  owner_email: string | null;
+  created_at: string;
+  members: number;
+  pending: number;
+  last_seen_at: string | null;
+  accounts: number;
+  transactions: number;
+  transactions_7d: number;
+  products: number;
+  shopping_open: number;
+  last_activity_at: string | null;
+}
+
+/** «לפני 3 ימים», or «אף פעם» — the only two answers this screen needs. */
+function ago(iso: string | null): string {
+  if (!iso) return 'אף פעם';
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+  if (days <= 0) return 'היום';
+  if (days === 1) return 'אתמול';
+  if (days < 30) return `לפני ${days} ימים`;
+  const months = Math.floor(days / 30);
+  return months === 1 ? 'לפני חודש' : `לפני ${months} חודשים`;
+}
+
+/**
+ * The pilot, from the outside.
+ *
+ * Three questions and no others: is anybody using this, who has gone quiet,
+ * and which home is which when somebody writes to say it broke. Every number
+ * here is a count and every date is a date — there is no amount on this screen
+ * and there is none in the response that feeds it, because there is none in the
+ * query. api/admin/_metrics.ts explains why that is enforced rather than meant,
+ * and public/privacy.html is the sentence it keeps true.
+ *
+ * A household that has not been opened in a week is the single most useful
+ * thing here: in a pilot, silence is the finding. It is marked, not sorted to
+ * the top — the order stays stable so the same home is in the same place every
+ * time this is opened.
+ */
+function PilotSection() {
+  const homes = useAsync(() => api.get<HouseholdMetrics[]>('/admin/metrics'));
+
+  const rows = homes.data ?? [];
+  const quiet = (home: HouseholdMetrics) =>
+    !home.last_activity_at
+    || Date.now() - new Date(home.last_activity_at).getTime() > 7 * 86_400_000;
+
+  return (
+    <section className="section">
+      <h2>הפיילוט <span className="count">· {rows.length}</span></h2>
+
+      <div className="rows">
+        {rows.map((home) => (
+          <div className="row" key={home.household_id} style={{ alignItems: 'flex-start', paddingBlock: 'var(--s3)' }}>
+            <span className="grow">
+              <span className="title" style={{ display: 'block' }}>
+                {home.name}
+                {quiet(home) && <span className="mark mark-red" style={{ marginInlineStart: 8 }}>שקט</span>}
+              </span>
+              <span className="meta n" style={{ fontSize: 12, display: 'block' }}>
+                {home.owner_email ?? '—'}
+              </span>
+              <span className="meta" style={{ fontSize: 12 }}>
+                {home.members} בבית
+                {home.pending > 0 && ` · ${home.pending} ממתינים`}
+                {' · נכנסו '}{ago(home.last_seen_at)}
+                {' · פעילות '}{ago(home.last_activity_at)}
+              </span>
+            </span>
+            <span className="meta n" style={{ fontSize: 12, textAlign: 'start', minWidth: 96 }}>
+              {home.transactions} תנועות
+              <br />
+              {home.transactions_7d} השבוע
+              <br />
+              {home.shopping_open} בקניות
+            </span>
+          </div>
+        ))}
+        {homes.loading && <Loading />}
+      </div>
+
+      {homes.error && <ErrorNote message={homes.error} onRetry={homes.reload} />}
+      {!homes.loading && rows.length === 0 && (
+        <p className="meta">אין עדיין בתים מלבד שלכם.</p>
+      )}
+
+      <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+        ספירות ותאריכים בלבד. אין כאן סכומים, שמות עסקים או מוצרים — וגם לא בשאילתה
+        שמזינה את המסך הזה. «שקט» = שבוע בלי שום פעולה.
+      </p>
     </section>
   );
 }

@@ -16,12 +16,15 @@ interface SessionValue {
   households: Household[];
   loading: boolean;
   googleClientId: string | null;
+  /** Offers the pilot screen. Never the authorisation — the API checks for itself. */
+  isOperator: boolean;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionValue>({
   user: null, failure: null, members: [], households: [], loading: true, googleClientId: null,
+  isOperator: false,
   refresh: async () => {}, signOut: async () => {},
 });
 
@@ -30,6 +33,7 @@ interface MeResponse {
   members?: Member[];
   households?: Household[];
   google_client_id: string | null;
+  is_operator?: boolean;
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -37,6 +41,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [households, setHouseholds] = useState<Household[]>([]);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
+  const [isOperator, setIsOperator] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -58,6 +63,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setMembers(data.members ?? []);
       setHouseholds(data.households ?? []);
       setGoogleClientId(data.google_client_id);
+      setIsOperator(data.is_operator === true);
       setFailure(null);
     } catch (err) {
       setUser(null);
@@ -90,7 +96,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <SessionContext.Provider value={{ user, failure, members, households, loading, googleClientId, refresh, signOut }}>
+    <SessionContext.Provider value={{ user, failure, members, households, loading, googleClientId, isOperator, refresh, signOut }}>
       {children}
     </SessionContext.Provider>
   );

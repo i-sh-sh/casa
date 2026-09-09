@@ -1,7 +1,7 @@
 {
-  "version": "0.3.7",
+  "version": "0.3.8",
   "min_version": "0.1.0",
   "mandatory": false,
-  "notes": "מדיניות פרטיות ותנאי שימוש",
-  "released_at": "2026-09-09T14:56:26.289Z"
+  "notes": "מסך הפיילוט למפעיל",
+  "released_at": "2026-09-09T15:23:53.334Z"
 }

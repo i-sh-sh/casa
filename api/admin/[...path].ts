@@ -5,7 +5,9 @@ import { oneOf, optionalStr, str } from '../_lib/validate.js';
 import { SCHEMA_SQL } from '../../db/schema.js';
 import { SEED_SQL } from './_seed.js';
 import { exportEverything, exportSheet, SHEET_NAMES } from './_export.js';
+import { pilotMetrics } from './_metrics.js';
 import { exportFilename } from '../../shared/csv.js';
+import { isOperator } from '../../shared/operators.js';
 import type { Role } from '../_lib/auth.js';
 
 const ROLES = ['owner', 'member', 'viewer', 'pending'] as const;
@@ -173,6 +175,22 @@ export default router([
   { method: 'GET', path: 'export/all', role: 'owner', handle: exportEverything },
   { method: 'PATCH', path: 'users', role: 'owner', handle: setUserRole },
   { method: 'PATCH', path: 'users/:email', role: 'owner', handle: setUserRole },
+
+  // The only route in the app that sees more than one household.
+  //
+  // `role: 'viewer'` is not the gate — the gate is the line below it, and it
+  // reads an environment variable rather than a table so that nothing reachable
+  // from a request can grant it. `unscoped` because this operates on the
+  // household registry; the per-home counts open their own scopes properly,
+  // inside _metrics.ts. What comes back is counts and dates. See that file for
+  // why that limit is enforced by a test and not by good intentions.
+  {
+    method: 'GET', path: 'metrics', role: 'viewer', unscoped: true,
+    handle: async (ctx: Ctx) => {
+      if (!isOperator(process.env.CASA_OPERATORS, ctx.user.email)) throw forbidden();
+      return await pilotMetrics();
+    },
+  },
   {
     method: 'GET', path: 'health', bootstrap: true,
     handle: async () => {
