@@ -244,9 +244,15 @@ export function describeDbError(err: unknown): string | null {
   // flat «שגיאת שרת», which is how an afternoon goes: the message that could
   // have ended it in one sentence was thrown away one line before the response.
   if (code === '28P01' || code === '28000') {
+    // Postgres returns this both for a wrong password and for a role that does
+    // not exist — and a Neon branch carries its own copy of the role list, so a
+    // CREATE ROLE run on the wrong branch is indistinguishable from a typo. The
+    // alert in _lib/alert.ts now carries the user and host we actually tried,
+    // because DATABASE_URL is a write-only Secret and cannot be read back.
     return 'המסד דחה את שם המשתמש או הסיסמה שב-DATABASE_URL. '
-      + 'בדקו שהחלפתם את שניהם, ושאין רווח או תו שנחתך בהעתקה. '
-      + 'אפשר לקבוע סיסמה חדשה: ALTER ROLE casa_app PASSWORD ... — ראו docs/NEON.md.';
+      + 'שלוש סיבות אפשריות: סיסמה שגויה, תו שנשבר בהעתקה, '
+      + 'או שהתפקיד casa_app נוצר על ענף אחר ב-Neon מזה שהכתובת מצביעה אליו. '
+      + 'ההתראה בטלגרם מציינת עכשיו לאיזה משתמש, מארח ומסד ניסינו להתחבר. ראו docs/NEON.md.';
   }
   if (code === '42501') {
     return 'המסד התחבר, אבל לתפקיד אין הרשאה על הטבלאות. '

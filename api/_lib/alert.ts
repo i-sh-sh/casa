@@ -5,18 +5,17 @@
  * using the app, and we find out in the week-three interview — or never. Three
  * weeks of a pilot is the whole pilot.
  *
- * **What it deliberately does not send: the error message.** Postgres puts row
- * values into its errors — a unique violation names the key, a check violation
- * names the row — so forwarding the message would forward another couple's
- * payees and amounts into a chat. That breaks the promise made to them in
- * writing ("ספירות, לא סכומים") on the exact surface where breaking it is
- * hardest to notice. What goes out is the request, the household number, and
- * the error's class. The detail is in the Vercel log, behind an account.
+ * This file is the transport: the token, the fetch, and the rate limit. **What
+ * may be said** — and in particular the rule that the error message itself
+ * never leaves the server, because Postgres puts row values into it — lives in
+ * shared/diagnostics.ts, which a test can reach and this file cannot be.
  *
  * It lives apart from notify.ts so that importing it does not pull `web-push`
  * into every serverless bundle — this is imported by the error path of every
  * single request.
  */
+
+import { describeForAlert } from '../../shared/diagnostics.js';
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT_ID ?? '';
@@ -55,34 +54,6 @@ function fresh(signature: string): boolean {
   if (seen.has(signature)) return false;
   seen.set(signature, now);
   return true;
-}
-
-/** How a failure is described without describing anybody's data. */
-export function describeForAlert(input: {
-  method?: string; url?: string; householdId?: number | null; err: unknown;
-}): { signature: string; text: string } {
-  const method = (input.method ?? 'GET').toUpperCase();
-  // The query string can carry a search term somebody typed. The path cannot.
-  const path = (input.url ?? '').split('?')[0] ?? '';
-  const err = input.err as { code?: string; name?: string; constraint?: string } | null;
-  // A Postgres SQLSTATE, or the error's class. Both are vocabulary, not data.
-  const kind = err?.code ?? err?.name ?? 'Error';
-  // A constraint name is schema, which we wrote, so it is safe and it is the
-  // single most useful word for finding the cause.
-  const where = err?.constraint ? ` · ${err.constraint}` : '';
-
-  const signature = `${method} ${path} ${kind}${where}`;
-  const home = input.householdId ? `בית ${input.householdId}` : 'ללא בית';
-  return {
-    signature,
-    text: [
-      '<b>קאסה · שגיאת שרת</b>',
-      `<code>${method} ${path}</code>`,
-      `${home} · <code>${kind}</code>${where}`,
-      '',
-      'הפרטים בלוג של Vercel — הודעת השגיאה עצמה לא נשלחת לכאן, כי היא עלולה להכיל נתונים של הבית.',
-    ].join('\n'),
-  };
 }
 
 /** Fire-and-forget. Never awaited by a request, never able to fail one. */

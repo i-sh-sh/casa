@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeForAlert } from '../../api/_lib/alert.ts';
+import { describeForAlert } from '../../shared/diagnostics.ts';
 
 // The alert exists so that a couple who hits a server error is not lost in
 // silence for three weeks. But it sends into a chat, and the promise made to
