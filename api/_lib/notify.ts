@@ -9,27 +9,10 @@ import { query, one } from './db.js';
 // configured the app is simply quiet, which is a valid way to run it and must
 // never be an error.
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
-const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT_ID ?? '';
-
-export async function telegram(text: string): Promise<boolean> {
-  if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT) return false;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text, parse_mode: 'HTML', disable_web_page_preview: true }),
-    });
-    if (!res.ok) console.error('telegram failed', res.status, await res.text());
-    return res.ok;
-  } catch (err) {
-    // A notification that fails must never fail the job that triggered it.
-    // The stock update already happened; losing it because Telegram was down
-    // would be the worse outcome by far.
-    console.error('telegram error', err);
-    return false;
-  }
-}
+// Telegram itself lives in alert.js, which the error path of every request
+// imports — keeping it there means importing it never pulls `web-push` into a
+// serverless bundle that has no use for it.
+export { telegram } from './alert.js';
 
 let pushConfigured: boolean | null = null;
 

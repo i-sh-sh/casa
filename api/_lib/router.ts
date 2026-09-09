@@ -83,9 +83,20 @@ export function router(routes: RouteDef[]) {
       // for its lifetime, and carries the connection to every query through
       // AsyncLocalStorage — so the isolation applies whether or not the handler
       // remembered it exists. The policies live in db/schema.sql, "Households".
-      const result = route.unscoped || route.bootstrap
-        ? await route.handle(ctx)
-        : await withHousehold(user.household_id, () => route.handle(ctx));
+      let result: unknown;
+      try {
+        result = route.unscoped || route.bootstrap
+          ? await route.handle(ctx)
+          : await withHousehold(user.household_id, () => route.handle(ctx));
+      } catch (err) {
+        // Which home hit it. The alert in http.ts is raised too far out to know
+        // — and "בית 3" is the difference between one couple's broken evening
+        // and a bug everybody has. A number, never a name: see _lib/alert.ts.
+        if (err && typeof err === 'object') {
+          (err as { casaHousehold?: number }).casaHousehold = user.household_id;
+        }
+        throw err;
+      }
 
       // A handler that already wrote the response returns undefined.
       if (res.writableEnded) return;

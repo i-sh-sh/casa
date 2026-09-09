@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { describeDbError } from './db.js';
+import { alertServerError } from './alert.js';
 
 /** An error the user is allowed to read. Anything else becomes a generic 500. */
 export class HttpError extends Error {
@@ -47,6 +48,13 @@ export function handler(fn: Handler) {
         return;
       }
       console.error('unhandled error', { url: req.url, method: req.method, err });
+      // Only here, and only for the unexpected. An HttpError is the app working
+      // — a 404 for a deleted item, a 403 for a viewer — and paging ourselves
+      // for those would bury the one message that means something.
+      alertServerError({
+        method: req.method, url: req.url, err,
+        householdId: (err as { casaHousehold?: number } | null)?.casaHousehold ?? null,
+      });
       json(res, 500, { error: 'שגיאת שרת. נסו שוב בעוד רגע.' });
     }
   };
