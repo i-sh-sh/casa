@@ -42,26 +42,40 @@ export function handler(fn: Handler) {
         json(res, err.status, { error: err.message });
         return;
       }
+      // Every 5xx from here on is paged. An HttpError is the app working — a
+      // 404 for a deleted item, a 403 for a viewer — and paging those would
+      // bury the one message that means something. Everything below is the app
+      // *not* working, and the person who can fix it is not the one looking at
+      // the screen.
+      //
+      // This block used to return before reaching the alert. That is not a
+      // hypothetical: naming 28P01 in describeDbError silently switched off the
+      // alert for the exact failure that was being diagnosed at the time, and
+      // an evening went into wondering why the chat had gone quiet. The order
+      // is now: decide the message, page, then answer. See http.test.ts, which
+      // reads this file and fails if a 5xx branch ever gets ahead of the page
+      // again.
+      const page = () => alertServerError({
+        method: req.method, url: req.url, err,
+        householdId: (err as { casaHousehold?: number } | null)?.casaHousehold ?? null,
+      });
+
       // Before anything else: the database cannot keep two households apart.
       // A generic 500 here would send the owner hunting for a bug in the app.
       const isolation = describeIsolationFailure(err);
       if (isolation) {
+        await page();
         json(res, 503, { error: isolation });
         return;
       }
-      const schemaHint = describeDbError(err);
-      if (schemaHint) {
-        json(res, 503, { error: schemaHint });
+      const dbHint = describeDbError(err);
+      if (dbHint) {
+        await page();
+        json(res, 503, { error: dbHint });
         return;
       }
       console.error('unhandled error', { url: req.url, method: req.method, err });
-      // Only here, and only for the unexpected. An HttpError is the app working
-      // — a 404 for a deleted item, a 403 for a viewer — and paging ourselves
-      // for those would bury the one message that means something.
-      alertServerError({
-        method: req.method, url: req.url, err,
-        householdId: (err as { casaHousehold?: number } | null)?.casaHousehold ?? null,
-      });
+      await page();
       json(res, 500, { error: 'שגיאת שרת. נסו שוב בעוד רגע.' });
     }
   };

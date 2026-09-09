@@ -81,6 +81,26 @@ function Pending({ email, household, onSignOut }: { email: string; household: st
   );
 }
 
+/** Where the app actually lives. Google was told about this origin and no other. */
+const HOME_ORIGIN = 'https://www.casa-ish.com';
+
+/**
+ * Google's sign-in checks the *origin* of the page against a list somebody
+ * typed into the Cloud Console. Exact strings, no wildcards.
+ *
+ * Vercel mints a new immutable hostname for every deployment
+ * (`casa-<hash>-<scope>.vercel.app`) — that is the address the dashboard's
+ * "Visit" button opens. It can never be on that list: it did not exist when the
+ * list was written, and the next deploy invents another one. So sign-in fails
+ * there and only there, which reads as "the new deploy is broken" when the
+ * deploy is fine and the address simply is not the app's address.
+ *
+ * The custom domain is an alias that follows production, so it is stable, and
+ * it is the one Google was told about.
+ */
+const onDeploymentUrl = (): boolean =>
+  typeof location !== 'undefined' && location.hostname.endsWith('.vercel.app');
+
 function SignIn() {
   const { googleClientId, failure, refresh } = useSession();
 
@@ -112,6 +132,14 @@ function SignIn() {
         <p style={{ color: 'var(--red)' }}>
           השרת ענה, אבל בלי <span className="n">GOOGLE_CLIENT_ID</span> — בלעדיו אי אפשר להיכנס.
           בדקו את משתני הסביבה ב-Vercel.
+        </p>
+      )}
+
+      {onDeploymentUrl() && (
+        <p className="meta" style={{ marginTop: 'var(--s4)', fontSize: 13 }}>
+          זו כתובת פריסה של Vercel, וגוגל מאשרת רק כתובות שנרשמו מראש — הכניסה תיכשל כאן
+          גם כשהכול תקין. הכתובת של קאסה היא{' '}
+          <a href={HOME_ORIGIN}>{HOME_ORIGIN.replace('https://', '')}</a>.
         </p>
       )}
     </div>

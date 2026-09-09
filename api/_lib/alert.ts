@@ -20,6 +20,9 @@ import { describeForAlert } from '../../shared/diagnostics.js';
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const TELEGRAM_CHAT = process.env.TELEGRAM_CHAT_ID ?? '';
 
+/** Long enough for a slow API, short enough not to hold a failing request open. */
+const SEND_TIMEOUT_MS = 3_000;
+
 export async function telegram(text: string): Promise<boolean> {
   if (!TELEGRAM_TOKEN || !TELEGRAM_CHAT) return false;
   try {
@@ -27,6 +30,7 @@ export async function telegram(text: string): Promise<boolean> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: TELEGRAM_CHAT, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
     if (!res.ok) console.error('telegram failed', res.status, await res.text());
     return res.ok;
@@ -56,11 +60,22 @@ function fresh(signature: string): boolean {
   return true;
 }
 
-/** Fire-and-forget. Never awaited by a request, never able to fail one. */
+/**
+ * Sends, and resolves when it has. Never rejects, never fails the request.
+ *
+ * It used to be fire-and-forget, which in a serverless runtime is closer to
+ * fire-and-hope: the function returns as soon as the response is written and
+ * the instance is frozen, so a `fetch` still in flight is simply abandoned —
+ * silently, and most reliably on a fast error path, which is every path here.
+ * Awaiting costs an already-failing request a few hundred milliseconds and is
+ * bounded by SEND_TIMEOUT_MS; not awaiting costs the message.
+ */
 export function alertServerError(input: {
   method?: string; url?: string; householdId?: number | null; err: unknown;
-}): void {
+}): Promise<void> {
   const { signature, text } = describeForAlert(input);
-  if (!fresh(signature)) return;
-  void telegram(text).catch(() => { /* the response has already gone out */ });
+  if (!fresh(signature)) return Promise.resolve();
+  return telegram(text)
+    .then(() => { /* sent, or logged as unsent */ })
+    .catch(() => { /* the response still has to go out */ });
 }
