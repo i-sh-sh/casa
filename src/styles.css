@@ -248,6 +248,48 @@ a { color: inherit; }
 .section > h2 .count { color: var(--ink-3); font-weight: 400; letter-spacing: 0; }
 .section > .rows { margin-top: 0; }
 
+/*
+   A section heading that is also the control that shuts it.
+   The heading keeps its own type — 12/700/+0.06em on the ink rule — because a
+   screen where some headings are chrome and others are buttons reads as two
+   screens. What is added is a hit area: the full width of the line, 48px tall,
+   which is the one-handed minimum for anything that gets pressed.
+*/
+/*
+   The section head grows *upward* into space that was already blank.
+
+   A 48px tap target centred in the heading pushed the ink rule 40px clear of
+   the words and the heading stopped sitting on its line — §5 of the design,
+   and the thing that made every folded screen read as drifting. Bottom-aligned,
+   the text keeps its 8px above the rule exactly as an unfolded heading does,
+   and the extra height is taken from the 36px gap above, which is empty anyway.
+*/
+.section-fold { margin-top: var(--s4); }
+.section > h2.fold-h2 { padding-bottom: 0; }
+
+.fold-head {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s2);
+  width: 100%;
+  min-height: 48px;
+  padding: 0 0 var(--s2);
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-align: start;
+}
+.fold-title { font-weight: 700; }
+/* Pushes the note and the mark to the far edge, so every folded section on a
+   screen lines its mark up in the same invisible column. */
+.fold-gap { flex: 1 1 auto; }
+
+.fold-mark { color: var(--ink-3); transition: transform 120ms ease; }
+.fold-mark-open { transform: rotate(180deg); }
+
+.fold-head:active { background: var(--paper-2); }
+
+
 /* ── Rows ────────────────────────────────────────────────────────────── */
 /*
    64px is not a style choice. It is the one-handed minimum for a screen read

@@ -231,3 +231,138 @@ export function AsyncForm({ onSubmit, submitLabel, children, disabled }: {
     </form>
   );
 }
+
+// ── Folded sections ──────────────────────────────────────────────────────
+
+/**
+ * Remembers which sections a person opened and shut. Only that.
+ *
+ * The distinction is the whole design: what is stored is a **decision**, never
+ * a state. A section nobody has ever touched is absent from the map, so the
+ * screen is free to choose a sensible default for it — and free to choose a
+ * different one next month — while a section somebody deliberately shut stays
+ * shut. Storing the state instead would freeze today's guess forever, and the
+ * first time the guess got better every returning user would keep the old one.
+ *
+ * localStorage and not the server: this is a per-device convenience, and a
+ * round trip to remember a fold would be a round trip too many. It is also the
+ * one place a throw is genuinely uninteresting — a private window, cleared site
+ * data, storage disabled — so every access is guarded and the fold simply falls
+ * back to its default.
+ */
+export function useFolds(scope: string) {
+  const key = `casa-folds:${scope}`;
+  const [decided, setDecided] = useState<Record<string, boolean>>(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  const toggle = useCallback((id: string, fallback: boolean) => {
+    setDecided((prev) => {
+      const next = { ...prev, [id]: !(prev[id] ?? fallback) };
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch { /* not worth failing a tap over */ }
+      return next;
+    });
+  }, [key]);
+
+  /** `fallback` is the screen's judgement for a section nobody has ruled on. */
+  const isOpen = useCallback(
+    (id: string, fallback: boolean) => decided[id] ?? fallback,
+    [decided],
+  );
+
+  /**
+   * Fixes a section's default the first time it is seen, and never again.
+   *
+   * Without this the defaults are live, and a live default folds the screen
+   * under a moving thumb: tick the last item in an aisle, the aisle judges
+   * itself finished, and it shuts — mid-shop, with the trolley in the other
+   * hand. The same shape lies in wait in the pantry, where restocking the last
+   * low product would close the shelf being stood in front of.
+   *
+   * It is the rule the list itself already follows in never re-sorting under a
+   * thumb (docs/DESIGN.md §8): what is on screen may change what it *says*,
+   * never where it *is*. The judgement is made once, on arrival; the next visit
+   * makes it again with fresh eyes.
+   */
+  const settled = useRef<Record<string, boolean>>({});
+  const settle = useCallback((id: string, value: boolean): boolean => {
+    settled.current[id] ??= value;
+    return settled.current[id]!;
+  }, []);
+
+  return { isOpen, toggle, settle };
+}
+
+/**
+ * A section that can be shut.
+ *
+ * The problem it solves is a pantry with sixty products: eight aisles of rows,
+ * and the two things that actually need doing are somewhere in the middle of
+ * them. Shutting an aisle is not hiding information — it is the difference
+ * between a list and an index.
+ *
+ * Three rules make it earn its place rather than merely add a tap:
+ *
+ * **A shut section still says what is inside it.** The count stays, and so does
+ * `note` — which is where a screen puts the thing that would make somebody open
+ * it: «2 נגמרים», a group's remaining budget. A fold that hides the signal
+ * along with the detail has made the screen worse, not shorter.
+ *
+ * **The mark is vertical.** Every sideways disclosure has to decide which way
+ * "forward" points, and this page is right-to-left. Down means shut and up
+ * means open in every language.
+ *
+ * **The heading is still the heading.** Same 12/700/+0.06em label on the same
+ * ink rule as an unfoldable section, because a screen where some headings are
+ * chrome and others are controls reads as two screens.
+ */
+export function Fold({ id, title, count, mark, note, open, onToggle, children }: {
+  id: string;
+  title: string;
+  /** Shown beside the title, in the marginal ink. Usually how many rows. */
+  count?: ReactNode;
+  /**
+   * A word beside the label — «חריגה», «נלקח הכול».
+   *
+   * It sits here rather than in `note` for the reason every number in this app
+   * hangs on one invisible vertical line: `note` is the left-hand column, and a
+   * word sharing that column pushes the digits of one section out of line with
+   * the next. Marks go with the label; figures go in the column.
+   */
+  mark?: ReactNode;
+  /** The reason to open it: what it comes to, or what is wrong in here. */
+  note?: ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const panel = `fold-${id}`;
+  return (
+    <section className="section section-fold">
+      <h2 className="fold-h2">
+        <button
+          type="button"
+          className="fold-head"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={panel}
+        >
+          <span className="fold-title">{title}</span>
+          {count !== undefined && <span className="count">{count}</span>}
+          {mark}
+          <span className="fold-gap" />
+          {note}
+          <Icon name="chevron" size={16} className={open ? 'fold-mark fold-mark-open' : 'fold-mark'} />
+        </button>
+      </h2>
+      {/* Unmounted, not hidden: sixty rows kept in the tree for a section
+          nobody has open is sixty rows of layout on every render. */}
+      {open && <div id={panel}>{children}</div>}
+    </section>
+  );
+}

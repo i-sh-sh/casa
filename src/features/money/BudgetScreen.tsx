@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { Link } from '../../lib/router.js';
-import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import {
@@ -33,6 +33,7 @@ export function BudgetScreen() {
   const averages = useAsync(() => api.get<CategoryAverage[]>('/money/averages', { month }), [month]);
   const [editing, setEditing] = useState<EnvelopeRow | null>(null);
   const toast = useToast();
+  const folds = useFolds('budget');
 
   const data = budget.data;
   const groups = (data?.envelopes ?? []).reduce<Record<string, EnvelopeRow[]>>((acc, env) => {
@@ -108,24 +109,51 @@ export function BudgetScreen() {
               />
             )}
 
-            {Object.entries(groups).map(([groupName, envelopes]) => (
-              <section className="section" key={groupName}>
-                <h2>{groupName} <span className="count">· נשאר ₪</span></h2>
-                <div className="rows">
-                  {envelopes.map((env) => (
-                    <EnvelopeLine key={env.category_id} env={env} onEdit={() => setEditing(env)} />
-                  ))}
-                </div>
-                <hr className="rule-2" />
-                <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
-                  <span className="margin-col" />
-                  <span className="grow label">סך הקבוצה</span>
-                  <span className="n amount" style={{ fontWeight: 600 }}>
-                    {formatILS(envelopes.reduce((s, e) => s + e.available, 0), { symbol: false })}
-                  </span>
-                </div>
-              </section>
-            ))}
+            {Object.entries(groups).map(([groupName, envelopes]) => {
+              const left = envelopes.reduce((s, e) => s + e.available, 0);
+              const over = envelopes.filter((e) => e.available < 0).length;
+              // A group holding an overspend is never shut by default, and the
+              // judgement is settled on arrival — otherwise allocating money to
+              // clear the overspend would fold the group being worked on.
+              // Tidying
+              // the screen by hiding the one line that says «חריגה» would be
+              // the budget lying by omission — and an unfolded budget is eight
+              // groups deep, which is precisely why most months only need the
+              // eight totals.
+              const fallback = folds.settle(groupName, over > 0 || Object.keys(groups).length <= 3);
+              return (
+                <Fold
+                  key={groupName}
+                  id={groupName}
+                  title={groupName}
+                  count={<>· נשאר ₪</>}
+                  // Shut, the group still says what it comes to: the same
+                  // number that sits under the double rule when it is open.
+                  mark={over > 0 ? <span className="mark mark-red">חריגה</span> : null}
+                  note={
+                    <span className={`n amount ${left < 0 ? 'over' : ''}`}>
+                      {formatILS(left, { symbol: false })}
+                    </span>
+                  }
+                  open={folds.isOpen(groupName, fallback)}
+                  onToggle={() => folds.toggle(groupName, fallback)}
+                >
+                  <div className="rows">
+                    {envelopes.map((env) => (
+                      <EnvelopeLine key={env.category_id} env={env} onEdit={() => setEditing(env)} />
+                    ))}
+                  </div>
+                  <hr className="rule-2" />
+                  <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
+                    <span className="margin-col" />
+                    <span className="grow label">סך הקבוצה</span>
+                    <span className={`n amount ${left < 0 ? 'over' : ''}`} style={{ fontWeight: 600 }}>
+                      {formatILS(left, { symbol: false })}
+                    </span>
+                  </div>
+                </Fold>
+              );
+            })}
           </>
         )}
       </div>

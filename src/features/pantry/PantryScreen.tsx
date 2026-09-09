@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
-import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { AISLES, expiryState } from '@shared/pantry.js';
@@ -29,6 +29,7 @@ export function PantryScreen() {
   const [creating, setCreating] = useState(false);
   const [stocking, setStocking] = useState<Product | null>(null);
   const toast = useToast();
+  const folds = useFolds('pantry');
 
   const all = products.data ?? [];
   const low = all.filter((p) => p.below_min);
@@ -44,6 +45,26 @@ export function PantryScreen() {
     (acc[p.category] ??= []).push(p);
     return acc;
   }, {});
+
+  /**
+   * Which aisles start shut.
+   *
+   * A pantry of fifteen products is a list and reads fine open; a pantry of
+   * sixty is eight aisles deep, and the two things that need doing are
+   * somewhere in the middle of them. So the fold earns its tap only past a
+   * threshold — below it, shutting sections would be a tax with nothing bought.
+   *
+   * Two exceptions, and they are the point of the whole screen. **An aisle
+   * holding something that ran out or is going off is never shut by default**,
+   * because hiding exactly what the screen exists to surface would be a worse
+   * screen with a tidier first impression. And a deliberate narrowing — a
+   * filter, a search — opens everything: somebody who typed «חלב» is asking to
+   * see it, not to be told which aisle it is in.
+   */
+  const narrowing = filter !== 'all' || search.trim() !== '';
+  const crowded = shown.length > 12;
+  const defaultOpen = (needsAttention: boolean) =>
+    narrowing || !crowded || needsAttention;
 
   async function consume(product: Product, qty: number) {
     // Optimistic, then reconciled. Nothing stands between the tap and the
@@ -100,22 +121,38 @@ export function PantryScreen() {
           />
         )}
 
-        {Object.entries(byAisle).map(([aisle, aisleProducts]) => (
-          <section className="section" key={aisle}>
-            <h2>{aisle} <span className="count n">{aisleProducts.length}</span></h2>
-            <div className="rows">
-              {aisleProducts.map((product) => (
-                <ProductRow
-                  key={product.id}
-                  product={product}
-                  onConsume={(qty) => void consume(product, qty)}
-                  onStock={() => setStocking(product)}
-                  onEdit={() => setEditing(product)}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        {Object.entries(byAisle).map(([aisle, aisleProducts]) => {
+          const needs = aisleProducts.filter(
+            (p) => p.below_min || expiryState(p.next_expiry, today()) !== 'ok',
+          ).length;
+          const fallback = defaultOpen(folds.settle(aisle, needs > 0));
+          return (
+            <Fold
+              key={aisle}
+              id={aisle}
+              title={aisle}
+              count={<span className="n">{aisleProducts.length}</span>}
+              // The reason to open it, kept visible while it is shut. A fold
+              // that hides the signal along with the detail has made the
+              // screen worse rather than shorter.
+              note={needs > 0 ? <span className="mark mark-red">{needs} לטיפול</span> : null}
+              open={folds.isOpen(aisle, fallback)}
+              onToggle={() => folds.toggle(aisle, fallback)}
+            >
+              <div className="rows">
+                {aisleProducts.map((product) => (
+                  <ProductRow
+                    key={product.id}
+                    product={product}
+                    onConsume={(qty) => void consume(product, qty)}
+                    onStock={() => setStocking(product)}
+                    onEdit={() => setEditing(product)}
+                  />
+                ))}
+              </div>
+            </Fold>
+          );
+        })}
 
         <button className="btn btn-block" style={{ marginTop: 'var(--s6)' }} onClick={() => setCreating(true)}>
           <Icon name="plus" size={18} /> הוספת מוצר

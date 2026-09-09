@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { actionId, useOutbox } from '../../lib/outbox.js';
 import { useSession } from '../../lib/session.js';
-import { AsyncForm, Empty, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { sortForShopping } from '@shared/pantry.js';
@@ -39,6 +39,7 @@ export function ShoppingScreen() {
   const [checkingOut, setCheckingOut] = useState(false);
   const toast = useToast();
   const outbox = useOutbox();
+  const folds = useFolds('shopping');
 
   // When the queue empties, the server is the truth again. Until then the
   // screen is showing what the person did, which is the whole point.
@@ -121,23 +122,41 @@ export function ShoppingScreen() {
           />
         )}
 
-        {Object.entries(byAisle).map(([aisle, aisleItems]) => (
-          <section className="section" key={aisle}>
-            <h2>
-              {aisle} <span className="count n">{aisleItems.filter((i) => i.status === 'open').length}</span>
-            </h2>
-            <div className="rows">
-              {aisleItems.map((item) => (
-                <Row
-                  key={item.id}
-                  item={item}
-                  onToggle={() => void (item.status === 'open' ? tick(item) : untick(item))}
-                  onRemove={() => void remove(item)}
-                />
-              ))}
-            </div>
-          </section>
-        ))}
+        {Object.entries(byAisle).map(([aisle, aisleItems]) => {
+          const left = aisleItems.filter((i) => i.status === 'open').length;
+          // Here the fold means something it means nowhere else in the app:
+          // *done with this one*. So an aisle starts open — you are standing in
+          // it — and an aisle with nothing left to pick up starts shut, which
+          // is the list getting shorter as the trolley fills.
+          //
+          // `settle` is what keeps that from happening under a moving thumb:
+          // the judgement is fixed when the aisle first appears, so ticking the
+          // last item leaves it open — exactly as the list refuses to re-sort
+          // itself mid-shop — and it opens folded on the next visit.
+          const fallback = folds.settle(aisle, left > 0);
+          return (
+            <Fold
+              key={aisle}
+              id={aisle}
+              title={aisle}
+              count={<span className="n">{left}</span>}
+              note={left === 0 ? <span className="meta">נלקח הכול</span> : null}
+              open={folds.isOpen(aisle, fallback)}
+              onToggle={() => folds.toggle(aisle, fallback)}
+            >
+              <div className="rows">
+                {aisleItems.map((item) => (
+                  <Row
+                    key={item.id}
+                    item={item}
+                    onToggle={() => void (item.status === 'open' ? tick(item) : untick(item))}
+                    onRemove={() => void remove(item)}
+                  />
+                ))}
+              </div>
+            </Fold>
+          );
+        })}
 
         {items.length > 0 && (
           <div style={{ marginTop: 'var(--s6)' }}>

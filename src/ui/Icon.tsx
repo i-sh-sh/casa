@@ -19,7 +19,7 @@
 export type IconName =
   | 'home' | 'cart' | 'pantry' | 'ledger' | 'dials'
   | 'plus' | 'minus' | 'box' | 'box-ticked' | 'close'
-  | 'back' | 'search' | 'alert' | 'lock';
+  | 'back' | 'search' | 'alert' | 'lock' | 'chevron';
 
 const PATHS: Record<IconName, string> = {
   // A house reduced to a gable and a wall. No door, no chimney, no window —
@@ -63,6 +63,16 @@ const PATHS: Record<IconName, string> = {
   alert: 'M4 4h16v16H4V4ZM12 8v5M12 16h.01',
 
   lock: 'M6 10.5h12V20H6v-9.5ZM8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3',
+
+  // The disclosure mark on a folded section. It points *down* when the section
+  // is shut and up when it is open — vertical on purpose, because every
+  // sideways disclosure has to decide which way "forward" is, and in a
+  // right-to-left page half the world's muscle memory is backwards. Up and down
+  // mean the same thing in every language.
+  //
+  // Two segments, mitred at the point, so at 16px it stays a drawn angle rather
+  // than softening into a curve.
+  chevron: 'M5.5 9 12 15.5 18.5 9',
 };
 
 export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {
