@@ -94,21 +94,25 @@ test('none of the default palettes appear in the stylesheet', () => {
   }
 });
 
-test('the guide is painted in the app\'s own palette, not a copy that drifted', () => {
-  // public/guide.html mirrors the tokens instead of importing them, because
-  // Vite hashes the real stylesheet into /assets/index-<hash>.css and a static
-  // page cannot name that file. Mirroring is a real cost — two places to
-  // change a colour — and this is what stops the second place going stale.
-  const guide = declarations(read('public/guide.html'));
+test('every static page is painted in the app\'s own palette, not a copy that drifted', () => {
+  // The pages outside the bundle — the guide, and the privacy policy and terms
+  // that Google requires before an app may leave "Testing" — mirror the tokens
+  // instead of importing them, because Vite hashes the real stylesheet into
+  // /assets/index-<hash>.css and a static page cannot name that file. Mirroring
+  // is a real cost, one more place per page to change a colour, and this is
+  // what stops those places going stale.
   const app = css();
-  for (const token of ['--paper', '--ink', '--red', '--blue', '--rule']) {
-    const inApp = new RegExp(`${token}:\\s*(#[0-9a-f]{6})`, 'i').exec(app);
-    const inGuide = new RegExp(`${token}:\\s*(#[0-9a-f]{6})`, 'i').exec(guide);
-    assert.ok(inApp && inGuide, `${token} must be defined in both`);
-    assert.equal(
-      inGuide[1]!.toLowerCase(), inApp[1]!.toLowerCase(),
-      `${token} has drifted between src/styles.css and public/guide.html`,
-    );
+  for (const page of ['public/guide.html', 'public/legal.css']) {
+    const mirrored = declarations(read(page));
+    for (const token of ['--paper', '--ink', '--red', '--blue', '--rule']) {
+      const inApp = new RegExp(`${token}:\\s*(#[0-9a-f]{6})`, 'i').exec(app);
+      const inPage = new RegExp(`${token}:\\s*(#[0-9a-f]{6})`, 'i').exec(mirrored);
+      assert.ok(inApp && inPage, `${token} must be defined in both src/styles.css and ${page}`);
+      assert.equal(
+        inPage[1]!.toLowerCase(), inApp[1]!.toLowerCase(),
+        `${token} has drifted between src/styles.css and ${page}`,
+      );
+    }
   }
 });
 

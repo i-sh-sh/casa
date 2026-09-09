@@ -1,4 +1,4 @@
-const CACHE_NAME = 'casa-v0.3.6';
+const CACHE_NAME = 'casa-v0.3.7';
 
 /**
  * The supermarket service worker.
@@ -37,6 +37,17 @@ const CACHEABLE_API = [
 
 const isCacheableApi = (url) =>
   CACHEABLE_API.some((path) => url.pathname === path);
+
+// Pages that are not the app: the guide, and the two Google requires before an
+// app may leave "Testing". A navigation to one of these must never be answered
+// with the app's shell — somebody arriving at /privacy from a consent screen
+// has to be shown the policy, not a cached sign-in page.
+const STANDALONE = new Set([
+  '/guide', '/guide.html',
+  '/privacy', '/privacy.html',
+  '/terms', '/terms.html',
+  '/legal.css',
+]);
 
 self.addEventListener('install', (event) => {
   // The shell is fetched at install so that the very first offline navigation
@@ -118,6 +129,8 @@ self.addEventListener('fetch', (event) => {
   // Another origin's response is not ours to keep, and Google's sign-in script
   // in particular must never come from a cache.
   if (url.origin !== self.location.origin) return;
+
+  if (STANDALONE.has(url.pathname)) return;
 
   if (event.request.mode === 'navigate') {
     event.respondWith(navigate(event.request));

@@ -135,6 +135,17 @@ function SignIn() {
         </p>
       )}
 
+      {/*
+        Below the button, not above it: somebody deciding whether to hand over
+        their household's money can read what happens to it first, and Google's
+        consent screen links to the same two pages.
+      */}
+      <p className="meta" style={{ marginTop: 'var(--s5)', fontSize: 13 }}>
+        <a href="/privacy">מדיניות פרטיות</a>
+        {' · '}
+        <a href="/terms">תנאי שימוש</a>
+      </p>
+
       {onDeploymentUrl() && (
         <p className="meta" style={{ marginTop: 'var(--s4)', fontSize: 13 }}>
           זו כתובת פריסה של Vercel, וגוגל מאשרת רק כתובות שנרשמו מראש — הכניסה תיכשל כאן

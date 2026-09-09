@@ -4,6 +4,8 @@
   "outputDirectory": "dist",
   "rewrites": [
     { "source": "/guide", "destination": "/guide.html" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/terms", "destination": "/terms.html" },
     { "source": "/api/admin/(.*)", "destination": "/api/admin/[...path]?path=$1" },
     { "source": "/api/money/(.*)", "destination": "/api/money/[...path]?path=$1" },
     { "source": "/api/pantry/(.*)", "destination": "/api/pantry/[...path]?path=$1" },

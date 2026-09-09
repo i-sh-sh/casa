@@ -1,0 +1,111 @@
+/*
+ * The two pages Google requires before an app may leave "Testing".
+ *
+ * They are static files rather than routes in the app for one reason: they
+ * have to be readable by somebody who is not signed in and never will be —
+ * a person deciding whether to sign in at all, and a reviewer at Google. A
+ * page behind the session gate cannot do that job.
+ *
+ * The tokens below are mirrored from src/styles.css, exactly as
+ * public/guide.html mirrors them: Vite hashes the real stylesheet into
+ * /assets/index-<hash>.css and a static page cannot name that file. Mirroring
+ * is a real cost — one more place to change a colour — so a test in
+ * scripts/tests/design.test.ts fails when this copy drifts from the app's.
+ */
+
+:root {
+  color-scheme: light;
+  --paper: #f2ede3; --paper-2: #eae3d6;
+  --ink: #1a1a17; --ink-2: #55503f; --ink-3: #837c68;
+  --rule: #cdc6b6;
+  --red: #a8321e;
+  --blue: #3a5c7a;
+  --f-display: 'Frank Ruhl Libre', 'Times New Roman', serif;
+  --f-text: 'Alef', 'Arial Hebrew', sans-serif;
+  --f-num: 'IBM Plex Mono', 'SF Mono', ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme=light]) {
+    color-scheme: dark;
+    --paper: #141310; --paper-2: #1e1c17;
+    --ink: #e8e2d4; --ink-2: #a49b86; --ink-3: #7a725f;
+    --rule: #35322a;
+    --red: #d4614a;
+    --blue: #7e9bb5;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; border-radius: 0 !important; box-shadow: none !important; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-text);
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sheet { max-width: 640px; margin-inline: auto; padding: 32px 20px 72px; }
+
+.wordmark {
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: 22px;
+  letter-spacing: -.02em;
+}
+
+.kicker {
+  font-size: 12px; font-weight: 700; letter-spacing: .06em;
+  color: var(--ink-2); text-transform: none;
+}
+
+h1 {
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: 32px;
+  line-height: 1.2;
+  letter-spacing: -.02em;
+  margin: 4px 0 8px;
+}
+
+h2 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 34px 0 8px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--rule);
+}
+
+p, li { margin: 0 0 12px; }
+ul { margin: 0 0 12px; padding-inline-start: 20px; }
+li::marker { color: var(--ink-3); }
+
+a { color: var(--blue); text-underline-offset: 3px; }
+
+.meta { color: var(--ink-2); font-size: 14px; }
+.n { font-family: var(--f-num); font-size: .94em; direction: ltr; unicode-bidi: isolate; }
+
+.rule { border: 0; border-top: 1px solid var(--rule); margin: 20px 0; }
+
+/* The one thing on these pages worth setting apart: what is never collected. */
+.frame {
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  padding: 14px 16px;
+  margin: 0 0 12px;
+}
+.frame p:last-child { margin-bottom: 0; }
+
+.foot {
+  margin-top: 40px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-2);
+  font-size: 14px;
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
