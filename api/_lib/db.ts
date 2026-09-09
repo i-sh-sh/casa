@@ -94,6 +94,27 @@ const scoped = new AsyncLocalStorage<pg.PoolClient>();
  * *this* role, on a table that has it — so a database that cannot enforce the
  * separation refuses to serve instead of quietly serving everyone.
  */
+class IsolationError extends Error {
+  readonly casaIsolationFailure = true;
+}
+
+/**
+ * Surfaces the isolation failure to the screen instead of hiding it.
+ *
+ * Everything unexpected becomes a flat "שגיאת שרת" on purpose — a stack trace
+ * in a response body is a disclosure. This is the one exception, and it earns
+ * it: the message names the exact misconfiguration and the exact fix, the
+ * person reading it is the owner who can act on it, and the alternative is
+ * hunting for a generic 500 while the database is unable to keep two
+ * households apart. It leaks nothing: it describes our own configuration, not
+ * anybody's data.
+ */
+export function describeIsolationFailure(err: unknown): string | null {
+  return (err as { casaIsolationFailure?: boolean } | null)?.casaIsolationFailure
+    ? (err as Error).message
+    : null;
+}
+
 let rlsProven: Promise<void> | undefined;
 
 function proveIsolation(client: pg.PoolClient): Promise<void> {
@@ -105,7 +126,7 @@ function proveIsolation(client: pg.PoolClient): Promise<void> {
     const row = probe.rows[0];
     if (!row?.active || row.superuser) {
       rlsProven = undefined; // a transient failure must not poison the process
-      throw new Error(
+      throw new IsolationError(
         'ההפרדה בין בתים לא פעילה במסד הנתונים הזה. '
         + `row_security_active=${row?.active} superuser_or_bypassrls=${row?.superuser}. `
         + 'המשמעות היא שבית אחד יכול לקרוא את הנתונים של בית אחר. '

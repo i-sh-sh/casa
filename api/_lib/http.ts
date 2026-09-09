@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { describeDbError } from './db.js';
+import { describeDbError, describeIsolationFailure } from './db.js';
 import { alertServerError } from './alert.js';
 
 /** An error the user is allowed to read. Anything else becomes a generic 500. */
@@ -40,6 +40,13 @@ export function handler(fn: Handler) {
     } catch (err) {
       if (err instanceof HttpError) {
         json(res, err.status, { error: err.message });
+        return;
+      }
+      // Before anything else: the database cannot keep two households apart.
+      // A generic 500 here would send the owner hunting for a bug in the app.
+      const isolation = describeIsolationFailure(err);
+      if (isolation) {
+        json(res, 503, { error: isolation });
         return;
       }
       const schemaHint = describeDbError(err);

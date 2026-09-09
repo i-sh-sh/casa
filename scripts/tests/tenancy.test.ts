@@ -248,3 +248,22 @@ test('reading memberships survives a database that predates households', () => {
   const fn = auth.slice(auth.indexOf('export async function membershipsOf'));
   assert.match(fn.slice(0, 700), /42P01/, 'membershipsOf must tolerate the tables not existing yet');
 });
+
+test('an isolation failure reaches the screen instead of becoming a generic 500', () => {
+  // Everything unexpected becomes "שגיאת שרת" on purpose. This is the one
+  // exception and it earns it: the message names the exact misconfiguration and
+  // the exact fix, the person reading it is the owner who can act on it, and
+  // the alternative is hunting for a bug in the app while the database is
+  // unable to keep two households apart.
+  const db = code(readFileSync(join(root, 'api/_lib/db.ts'), 'utf-8'));
+  const http = code(readFileSync(join(root, 'api/_lib/http.ts'), 'utf-8'));
+  assert.match(db, /casaIsolationFailure/);
+  assert.match(db, /export function describeIsolationFailure/);
+  assert.match(http, /describeIsolationFailure\(err\)/);
+  // And ahead of the schema hint, which would otherwise claim the response
+  // first for a database that is migrated but unsafe.
+  assert.ok(
+    http.indexOf('describeIsolationFailure(err)') < http.indexOf('describeDbError(err)'),
+    'the isolation check must be tested before the schema check',
+  );
+});
