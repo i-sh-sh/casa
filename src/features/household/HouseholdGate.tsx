@@ -186,15 +186,27 @@ function AcceptInvite({ token, onJoined }: { token: string; onJoined: () => void
 
   return (
     <>
+      {/* This is the first screen the second person in a couple ever sees, and
+          quite possibly the first time they have heard of any of this. A
+          headline and a button would ask them to hand their household budget to
+          a name they half-recognise on a link somebody sent them. */}
       <p>
         הוזמנתם ל<b>{invite.household_name}</b>
         {invite.role === 'viewer' && ' — בתור צופים, בלי הרשאת שינוי'}.
+        <br />
+        קאסה היא פנקס אחד לבית: התקציב, המזווה ורשימת הקניות, לשניכם.
       </p>
       <hr className="rule" style={{ margin: '0 0 var(--s5)' }} />
       {error && <p style={{ color: 'var(--red)', fontSize: 15, marginBottom: 'var(--s3)' }}>{error}</p>}
       <button className="btn btn-primary btn-block" onClick={() => void accept()} disabled={busy}>
         {busy ? 'רגע…' : 'הצטרפות'}
       </button>
+      <p className="meta" style={{ marginTop: 'var(--s4)' }}>
+        {invite.role === 'viewer'
+          ? 'תראו את הכול ולא תשנו כלום.'
+          : 'תראו ותשנו הכול, בדיוק כמו מי שהזמין אתכם.'}
+        {' '}אפשר לצאת בכל רגע, ולקחת את הנתונים ב-CSV.
+      </p>
     </>
   );
 }
