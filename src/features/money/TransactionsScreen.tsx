@@ -26,6 +26,7 @@ export function TransactionsScreen() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const transactions = useAsync(() => api.get<Transaction[]>('/money/transactions', { month }), [month]);
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<Transaction | null>(null);
   const toast = useToast();
   const folds = useFolds('transactions');
 
@@ -85,17 +86,22 @@ export function TransactionsScreen() {
             >
               <div className="rows">
                 {dayItems.map((t) => (
-                  <div className="row" key={t.id}>
-                    <span className="grow">
+                  // The whole row opens it, as every row in this app does. A
+                  // transaction is the one thing here that is typed in a hurry
+                  // — the wrong category, a digit short — and until now the
+                  // only way to correct one was to know it could not be done.
+                  <button className="row" key={t.id} onClick={() => setEditing(t)}>
+                    <span className="grow" style={{ textAlign: 'start' }}>
                       <span className="title" style={{ display: 'block' }}>{t.payee || t.category_name || 'ללא שם'}</span>
                       <span className="meta">
                         {t.category_name ?? 'לא משויך'} · {t.account_name}
+                        {t.paid_by && <> · שילם {t.paid_by.split('@')[0]}</>}
                       </span>
                     </span>
                     {/* Income is not green. It is simply not negative — which in a
                         ledger is the whole distinction, and the only one needed. */}
                     <span className="n amount">{formatILS(t.amount, { sign: true, agorot: true, symbol: false })}</span>
-                  </div>
+                  </button>
                 ))}
               </div>
             </Fold>
@@ -119,53 +125,105 @@ export function TransactionsScreen() {
         </button>
       </div>
 
-      {adding && (
+      {(adding || editing) && (
         <TransactionSheet
-          onClose={() => setAdding(false)}
-          onSaved={() => { setAdding(false); transactions.reload(); toast.show('נרשם'); }}
+          transaction={editing}
+          onClose={() => { setAdding(false); setEditing(null); }}
+          onSaved={(what) => {
+            setAdding(false); setEditing(null);
+            transactions.reload();
+            toast.show(what);
+          }}
         />
       )}
     </>
   );
 }
 
-function TransactionSheet({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const { user } = useSession();
+/**
+ * One sheet, for writing a transaction and for correcting one.
+ *
+ * A transaction is the thing in this app that is typed fastest and wrongest: in
+ * a queue, one-handed, with a receipt in the other hand. The wrong category, a
+ * digit short, the wrong person marked as having paid. The API has accepted
+ * PATCH and DELETE since the beginning; the screen simply never offered a way
+ * in, so the only remedy for a mistyped ₪450 was to live with it.
+ *
+ * **Editing sends every field, because the endpoint replaces every field.**
+ * That is why `paid_by` and `split` are carried through rather than defaulted:
+ * a PATCH that quietly re-stamped every corrected transaction with whoever
+ * happened to be holding the phone would silently rewrite the balance between
+ * the two of them — the one number in the app they are most likely to be
+ * keeping score with, corrupted by the act of fixing a typo.
+ */
+function TransactionSheet({ transaction, onClose, onSaved }: {
+  transaction: Transaction | null;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const { user, members } = useSession();
   const accounts = useAsync(() => api.get<Account[]>('/money/accounts'));
   const categories = useAsync(() => api.get<Category[]>('/money/categories'));
 
-  const [kind, setKind] = useState<'spend' | 'income'>('spend');
-  const [amount, setAmount] = useState('');
-  const [payee, setPayee] = useState('');
-  const [accountId, setAccountId] = useState('');
-  const [categoryId, setCategoryId] = useState('');
-  const [occurredOn, setOccurredOn] = useState(todayISO());
+  const editing = transaction !== null;
+  const [kind, setKind] = useState<'spend' | 'income'>(
+    transaction && transaction.amount > 0 ? 'income' : 'spend',
+  );
+  const [amount, setAmount] = useState(transaction ? String(Math.abs(transaction.amount)) : '');
+  const [payee, setPayee] = useState(transaction?.payee ?? '');
+  const [accountId, setAccountId] = useState(transaction ? String(transaction.account_id) : '');
+  const [categoryId, setCategoryId] = useState(transaction?.category_id ? String(transaction.category_id) : '');
+  const [occurredOn, setOccurredOn] = useState(transaction?.occurred_on ?? todayISO());
+  const [paidBy, setPaidBy] = useState(transaction?.paid_by ?? user?.email ?? '');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const usable = (categories.data ?? []).filter((c) => !c.archived_at && (kind === 'income' ? c.kind === 'income' : c.kind !== 'income'));
   const openAccounts = (accounts.data ?? []).filter((a) => !a.archived_at);
 
+  async function remove() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.del(`/money/transactions/${transaction!.id}`);
+      onSaved('נמחקה');
+    } catch (err) {
+      setDeleting(false);
+      setDeleteError(err instanceof Error ? err.message : 'לא הצלחנו למחוק');
+    }
+  }
+
   return (
-    <Sheet title="תנועה חדשה" onClose={onClose}>
+    <Sheet title={editing ? 'עריכת תנועה' : 'תנועה חדשה'} onClose={onClose}>
       <div className="tabs" style={{ marginBottom: 'var(--s5)' }}>
         <button type="button" className="tab" aria-pressed={kind === 'spend'} onClick={() => { setKind('spend'); setCategoryId(''); }}>הוצאה</button>
         <button type="button" className="tab" aria-pressed={kind === 'income'} onClick={() => { setKind('income'); setCategoryId(''); }}>הכנסה</button>
       </div>
 
       <AsyncForm
-        submitLabel="שמירה"
+        submitLabel={editing ? 'שמירה' : 'רישום'}
         disabled={!amount || !openAccounts.length}
         onSubmit={async () => {
           const magnitude = Math.abs(Number(amount));
-          await api.post('/money/transactions', {
+          const body = {
             occurred_on: occurredOn,
             account_id: Number(accountId) || openAccounts[0]?.id,
             category_id: categoryId ? Number(categoryId) : null,
             amount: kind === 'income' ? magnitude : -magnitude,
             payee,
-            paid_by: user?.email ?? '',
-            split: 'shared',
-          });
-          onSaved();
+            paid_by: paidBy || user?.email || '',
+            // Preserved rather than defaulted: PATCH replaces the row, and a
+            // personal expense corrected for a typo must not become shared.
+            split: transaction?.split ?? 'shared',
+          };
+          if (editing) {
+            await api.patch(`/money/transactions/${transaction.id}`, body);
+            onSaved('עודכנה');
+          } else {
+            await api.post('/money/transactions', body);
+            onSaved('נרשמה');
+          }
         }}
       >
         <Field label="סכום · ₪">
@@ -187,15 +245,58 @@ function TransactionSheet({ onClose, onSaved }: { onClose: () => void; onSaved: 
             </select>
           </Field>
         </div>
-        <Field label="תאריך">
-          <input className="input" type="date" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} />
-        </Field>
+        <div className="row-2">
+          <Field label="תאריך">
+            <input className="input" type="date" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} />
+          </Field>
+          {/* The field the balance between the two of them is built from, and
+              the one most often wrong — the phone that records the shop is not
+              always the card that paid for it. */}
+          <Field label="מי שילם">
+            <select className="select" value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>
+              {members.map((m) => <option key={m.email} value={m.email}>{m.display_name}</option>)}
+              {!members.some((m) => m.email === paidBy) && paidBy && (
+                <option value={paidBy}>{paidBy.split('@')[0]}</option>
+              )}
+            </select>
+          </Field>
+        </div>
         {!openAccounts.length && !accounts.loading && (
           <p style={{ color: 'var(--red)', fontSize: 15, marginBottom: 'var(--s3)' }}>
             אין חשבונות. פתחו אחד ב«הגדרות» לפני רישום תנועה.
           </p>
         )}
       </AsyncForm>
+
+      {editing && (
+        // Two steps, not a native confirm(): a browser dialog is the one piece
+        // of chrome this app cannot style, and it would be the only rounded
+        // thing on the screen. The delete is soft — api/money keeps the row and
+        // stamps deleted_at — but there is no way back from inside the app, so
+        // it is worth asking once.
+        <div style={{ marginTop: 'var(--s5)', paddingTop: 'var(--s4)', borderTop: '1px solid var(--rule)' }}>
+          {deleteError && <p style={{ color: 'var(--red)', fontSize: 15 }}>{deleteError}</p>}
+          {confirmingDelete ? (
+            <>
+              <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
+                למחוק את התנועה? היא תרד מהתקציב ומהאיזון.
+              </p>
+              <div className="row-2">
+                <button type="button" className="btn btn-red" onClick={() => void remove()} disabled={deleting}>
+                  {deleting ? 'רגע…' : 'מחיקה'}
+                </button>
+                <button type="button" className="btn" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
+                  השארה
+                </button>
+              </div>
+            </>
+          ) : (
+            <button type="button" className="btn btn-block btn-quiet" onClick={() => setConfirmingDelete(true)}>
+              מחיקת התנועה
+            </button>
+          )}
+        </div>
+      )}
     </Sheet>
   );
 }
