@@ -3,7 +3,7 @@ import { router, type Ctx } from '../_lib/router.js';
 import { query, one, transaction } from '../_lib/db.js';
 import { badRequest, conflict, notFound } from '../_lib/http.js';
 import { bool, date, int, num, oneOf, optionalDate, optionalInt, optionalNum, optionalStr, str } from '../_lib/validate.js';
-import { advanceDue, buildBudgetMonth, categoryAverages, computeBalance, monthKey } from '../../shared/money.js';
+import { advanceDue, buildBudgetMonth, computeBalance, monthKey } from '../../shared/money.js';
 import type { Account, Category, Transaction } from '../../shared/types.js';
 
 const ACCOUNT_KINDS = ['bank', 'cash', 'credit', 'savings'] as const;
@@ -95,21 +95,6 @@ async function getBudget(ctx: Ctx) {
   return buildBudgetMonth({ month, categories, allocations, spends });
 }
 
-/**
- * What each category has actually cost over the months we have.
- *
- * The first stage of the method is to map three real months before budgeting
- * a shekel, because a target invented from nothing is a wish rather than a
- * plan. Every transaction is already here, so the mapping that the method
- * asks a household to do by hand is arithmetic we can just do.
- */
-async function getAverages(ctx: Ctx) {
-  const month = monthKey(ctx.query['month'] || new Date());
-  const lookback = Math.min(Math.max(Number(ctx.query['months'] ?? 3) || 3, 1), 12);
-  const { categories, spends } = await budgetInputs(month);
-  return categoryAverages({ month, categories, spends, lookback });
-}
-
 /** Put money in one envelope for one month. Idempotent — it sets, never adds. */
 async function setAllocation(ctx: Ctx) {
   const month = monthKey(str(ctx.body['month'], 'חודש', { max: 10 }));
@@ -125,29 +110,6 @@ async function setAllocation(ctx: Ctx) {
   );
   if (!row) throw notFound('הקטגוריה לא נמצאה');
   return row;
-}
-
-/**
- * Fills a month from each category's usual target, in one press.
- *
- * Only touches envelopes that have no row yet for that month. Overwriting an
- * allocation somebody typed by hand — because they moved ₪200 into groceries
- * on the 14th — would undo a deliberate decision with a convenience button.
- */
-async function autofillMonth(ctx: Ctx) {
-  const month = monthKey(str(ctx.body['month'], 'חודש', { max: 10 }));
-  const rows = await query(
-    `INSERT INTO budget_allocations (month, category_id, allocated, updated_by)
-     SELECT $1::date, c.id, c.monthly_target, $2
-       FROM categories c
-      WHERE c.monthly_target IS NOT NULL
-        AND c.archived_at IS NULL
-        AND c.kind <> 'income'
-     ON CONFLICT (month, category_id) DO NOTHING
-     RETURNING category_id, allocated`,
-    [month, ctx.user.email],
-  );
-  return { filled: rows.length, rows };
 }
 
 // ── Transactions ─────────────────────────────────────────────────────────
@@ -457,9 +419,7 @@ export default router([
   },
 
   { method: 'GET', path: 'budget', role: 'viewer', handle: getBudget },
-  { method: 'GET', path: 'averages', role: 'viewer', handle: getAverages },
   { method: 'PUT', path: 'budget/:categoryId', handle: setAllocation },
-  { method: 'POST', path: 'budget/autofill', handle: autofillMonth },
 
   { method: 'GET', path: 'transactions', role: 'viewer', handle: listTransactions },
   { method: 'POST', path: 'transactions', handle: createTransaction },

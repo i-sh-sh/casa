@@ -113,15 +113,12 @@ export interface EnvelopeRow {
   group_id: number | null;
   group_name: string | null;
   kind: CategoryKind;
-  commitment: Commitment;
-  icon: string | null;
-  /** What we put in this envelope this month. */
+  /** What we put in this envelope, this month. */
   allocated: number;
   /** What left it this month, as a positive number. */
   spent: number;
-  /** Everything allocated up to and including this month, minus everything spent. */
+  /** allocated − spent, for this month alone. Nothing carries. */
   available: number;
-  monthly_target: number | null;
 }
 
 export interface BudgetMonth {
@@ -130,14 +127,10 @@ export interface BudgetMonth {
   income: number;
   allocated: number;
   spent: number;
-  /** Income to date minus everything ever allocated. Negative = we over-promised. */
+  /** This month's income minus what this month's budget claims. */
   to_be_budgeted: number;
-  /** This month's income minus this month's spending, and what that becomes if nothing changes. */
+  /** This month's income minus this month's spending. */
   flow: CashFlow;
-  /** The month split by how much control we have over it. */
-  commitments: CommitmentSlice[];
-  /** Whether enough is set aside for the things we cannot see coming. */
-  unplanned: UnplannedCheck;
 }
 
 /**
@@ -153,9 +146,6 @@ export interface CashFlow {
   spent: number;
   /** income − spent. Negative means the month did not cover itself. */
   monthly: number;
-  /** monthly × 12 and × 36, only meaningful while nothing changes. */
-  yearly: number;
-  three_year: number;
 }
 
 export interface CommitmentSlice {

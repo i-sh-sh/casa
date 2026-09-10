@@ -101,12 +101,12 @@ export function HomeScreen() {
                 נכנס <span className="n">{formatILS(budget.data.flow.income)}</span>
                 {' · הוצא '}<span className="n">{formatILS(budget.data.flow.spent)}</span>
               </div>
-              {/* Said once, on the screen opened most often. The projection is
-                  the intervention; burying it a tab away wastes it. */}
+              {/* The month said it did not cover itself. That is the whole
+                  statement — no multiplication out to a year and three, which
+                  was rhetoric dressed as a measurement. */}
               {short && (
                 <div className="meta" style={{ marginTop: 'var(--s2)', color: 'var(--red)' }}>
-                  בקצב הזה — <span className="n">{formatILS(budget.data.flow.yearly)}</span> בשנה,
-                  {' '}<span className="n">{formatILS(budget.data.flow.three_year)}</span> בשלוש
+                  החודש הוציא יותר ממה שנכנס
                 </div>
               )}
             </div>

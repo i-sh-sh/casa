@@ -1,33 +1,31 @@
 import type {
-  BudgetMonth, EnvelopeRow, Category, BalanceBetweenUs,
-  CashFlow, Commitment, CommitmentSlice, UnplannedCheck, CategoryAverage,
+  BudgetMonth, EnvelopeRow, Category, BalanceBetweenUs, CashFlow,
 } from './types.js';
 
-/** The ladder, from least control to most. Order matters — it is how it reads. */
-export const COMMITMENTS: readonly Commitment[] = ['rigid', 'flexible', 'liquid', 'unplanned'];
-
-export const COMMITMENT_LABELS: Record<Commitment, string> = {
-  rigid: 'קשיחות',
-  flexible: 'גמישות',
-  liquid: 'נזילות',
-  unplanned: 'לא צפויות',
-};
-
-export const COMMITMENT_NOTES: Record<Commitment, string> = {
-  rigid: 'קבועות, או כאלה שקשה לשנות',
-  flexible: 'חייבים לשלם משהו — כמה, זה חלקית בידינו',
-  liquid: 'החלטה מלאה שלנו. כאן נחסך חודש',
-  unplanned: 'מה שלא רואים מראש, ודווקא לכן מתקצבים',
-};
-
-/**
- * The share of the month the method says to set aside for the unforeseen.
+/*
+ * ═════════════════════════════════════════════════════════════════════════
+ *  One month at a time.
+ * ═════════════════════════════════════════════════════════════════════════
  *
- * 5% is the floor stated in the material; its worked template widens it to
- * 5–10%. We hold the floor, because a rule that is checked is worth more than
- * a range that is admired.
+ * This module used to carry a method: envelopes that rolled over, a ladder of
+ * rigid/flexible/liquid/unplanned, a 5% floor for the unforeseen, three-month
+ * averages, a projection of the deficit over one year and three. Every one of
+ * those put a number on the screen that nobody in the household had typed.
+ *
+ * The complaint that removed them was the right one: a budget you cannot
+ * recompute in your head is a budget you cannot trust or argue with. Rollover
+ * was the worst of it — «נשאר» was everything ever allocated minus everything
+ * ever spent, so a category could read ₪800 remaining in a month it had been
+ * given ₪200, and the explanation lived eleven months back.
+ *
+ * What is left is the arithmetic a person does on paper:
+ *
+ *     נשאר = תקצבתם החודש − הוצאתם החודש
+ *
+ * Nothing crosses a month boundary. Nothing is filled in for you. Every figure
+ * on the budget screen is a subtraction between two numbers that are also on
+ * the screen.
  */
-export const UNPLANNED_FLOOR = 0.05;
 
 /**
  * Shekels, to the agora, without float dust.
@@ -101,20 +99,24 @@ export interface SpendInput {
 }
 
 /**
- * Turns raw allocations and transactions into the month's envelopes.
+ * Turns this month's allocations and this month's transactions into envelopes.
  *
- * The one rule worth stating out loud is **rollover**: an envelope's
- * `available` is not this month's allocation minus this month's spending. It
- * is *everything ever put in* minus *everything ever taken out*, up to and
- * including this month. That is what makes the model work for the categories
- * that matter — ביטוח רכב is ₪250 a month for eleven months and ₪2,750 in the
- * twelfth, and a per-month view calls that a disaster instead of a plan.
+ * The whole rule: **nothing crosses a month boundary.** An allocation belongs
+ * to the month it was made for, a spend to the month it happened in, and
+ * `available` is the difference between the two. September knows nothing about
+ * August.
  *
- * Overspending carries too, deliberately. YNAB hides an overspent envelope by
- * resetting it to zero next month and quietly taking the difference out of the
- * next month's income; that is kinder and less honest. Here a negative
- * envelope stays negative until somebody moves money into it, which is the
- * thing that actually has to happen.
+ * The version this replaces carried balances forward, which is the stronger
+ * model on paper and the one that made the screen unreadable: «נשאר» was every
+ * allocation ever minus every spend ever, so a category funded ₪200 this month
+ * could show ₪800 remaining, and the reason was somewhere in the spring. An
+ * overspend behaved worse — it followed the category around until somebody
+ * found it.
+ *
+ * The cost of dropping it is real and worth naming: a category that is ₪250 a
+ * month for eleven months and ₪2,750 in the twelfth now reads as a disaster in
+ * December. That is a saving, and savings belong in an account, not in an
+ * envelope that quietly remembers.
  */
 export function buildBudgetMonth(params: {
   month: string;
@@ -124,26 +126,22 @@ export function buildBudgetMonth(params: {
 }): BudgetMonth {
   const { month, categories, allocations, spends } = params;
 
-  const allocThisMonth = new Map<number, number>();
-  const allocToDate = new Map<number, number>();
+  const allocated = new Map<number, number>();
   for (const a of allocations) {
-    if (a.month > month) continue;
-    allocToDate.set(a.category_id, (allocToDate.get(a.category_id) ?? 0) + a.allocated);
-    if (a.month === month) allocThisMonth.set(a.category_id, (allocThisMonth.get(a.category_id) ?? 0) + a.allocated);
+    if (a.month !== month) continue;
+    allocated.set(a.category_id, (allocated.get(a.category_id) ?? 0) + a.allocated);
   }
 
   // `spent` is reported positive because "הוצאנו 1,200" is how it is read,
   // while the stored amount is negative. The two never meet: the sign flip
   // happens once, here.
-  const spentThisMonth = new Map<number, number>();
-  const spentToDate = new Map<number, number>();
-  let incomeThisMonth = 0;
-  let incomeToDate = 0;
+  const spent = new Map<number, number>();
+  let income = 0;
 
   const incomeCategoryIds = new Set(categories.filter((c) => c.kind === 'income').map((c) => c.id));
 
   for (const s of spends) {
-    if (s.month > month) continue;
+    if (s.month !== month) continue;
     // What counts as income is the category's *kind*, not the sign. A grocery
     // month with more refunds than purchases is not a payday; it is a spending
     // envelope with a negative spend, which correctly gives the money back.
@@ -153,167 +151,62 @@ export function buildBudgetMonth(params: {
       ? incomeCategoryIds.has(s.category_id)
       : s.amount > 0;
     if (isIncome) {
-      incomeToDate += s.amount;
-      if (s.month === month) incomeThisMonth += s.amount;
+      income += s.amount;
       continue;
     }
     if (s.category_id == null) continue; // an unfiled spend: real, but in no envelope yet
-    const magnitude = -s.amount;
-    spentToDate.set(s.category_id, (spentToDate.get(s.category_id) ?? 0) + magnitude);
-    if (s.month === month) spentThisMonth.set(s.category_id, (spentThisMonth.get(s.category_id) ?? 0) + magnitude);
+    spent.set(s.category_id, (spent.get(s.category_id) ?? 0) + -s.amount);
   }
 
   const envelopes: EnvelopeRow[] = categories
     .filter((c) => c.kind !== 'income' && !c.archived_at)
-    .map((c) => ({
-      category_id: c.id,
-      category_name: c.name,
-      group_id: c.group_id,
-      group_name: c.group_name,
-      kind: c.kind,
-      commitment: c.commitment,
-      icon: c.icon,
-      allocated: round2(allocThisMonth.get(c.id) ?? 0),
-      spent: round2(spentThisMonth.get(c.id) ?? 0),
-      available: round2((allocToDate.get(c.id) ?? 0) - (spentToDate.get(c.id) ?? 0)),
-      monthly_target: c.monthly_target,
-    }));
+    .map((c) => {
+      const put = round2(allocated.get(c.id) ?? 0);
+      const took = round2(spent.get(c.id) ?? 0);
+      return {
+        category_id: c.id,
+        category_name: c.name,
+        group_id: c.group_id,
+        group_name: c.group_name,
+        kind: c.kind,
+        allocated: put,
+        spent: took,
+        available: round2(put - took),
+      };
+    });
 
-  const allocatedThisMonthTotal = envelopes.reduce((sum, e) => sum + e.allocated, 0);
-  const spentThisMonthTotal = envelopes.reduce((sum, e) => sum + e.spent, 0);
-  const allocatedEverTotal = [...allocToDate.values()].reduce((sum, v) => sum + v, 0);
+  const allocatedTotal = round2(envelopes.reduce((sum, e) => sum + e.allocated, 0));
+  const spentTotal = round2(envelopes.reduce((sum, e) => sum + e.spent, 0));
 
   return {
     month,
     envelopes,
-    income: round2(incomeThisMonth),
-    allocated: round2(allocatedThisMonthTotal),
-    spent: round2(spentThisMonthTotal),
-    to_be_budgeted: round2(incomeToDate - allocatedEverTotal),
-    // Flow is measured against what actually happened this month, not against
-    // what was planned. A budget that balances on paper while the month runs a
-    // deficit is the exact situation the projection exists to expose.
-    flow: cashFlow(incomeThisMonth, spentThisMonthTotal),
-    commitments: commitmentBreakdown(envelopes),
-    unplanned: unplannedCheck(envelopes),
+    income: round2(income),
+    allocated: allocatedTotal,
+    spent: spentTotal,
+    // This month's income, minus what this month's budget claims. Not a
+    // running account of every month since the beginning.
+    to_be_budgeted: round2(round2(income) - allocatedTotal),
+    flow: cashFlow(round2(income), spentTotal),
   };
 }
 
-// ── Cash flow, said out loud ─────────────────────────────────────────────
-
 /**
- * Income minus spending, and what that becomes if nothing changes.
+ * Income minus spending. That is the entire function.
  *
- * The projection is not a forecast and does not pretend to be one — it is the
- * same subtraction multiplied by 12 and 36. That is the whole trick, and it
- * works: a household shrugs at "₪1,200 short this month" and does not shrug
- * at "₪43,200 over three years". Stating it is the intervention.
- *
- * It is only computed forward for a deficit. Multiplying a good month by 36 to
- * promise ₪43,200 of savings would be the same arithmetic used dishonestly.
+ * It used to also multiply a deficit by 12 and 36 and put both on the screen.
+ * The argument for it was that «₪1,200 short this month» is shrugged at and
+ * «₪43,200 over three years» is not — which is true, and is exactly why it was
+ * the wrong thing for this app to say: it is a rhetorical device wearing the
+ * clothes of a measurement, and it appeared beside real figures the household
+ * had typed themselves.
  */
 export function cashFlow(income: number, spent: number): CashFlow {
-  const monthly = round2(income - spent);
-  const projecting = monthly < 0 ? monthly : 0;
   return {
     income: round2(income),
     spent: round2(spent),
-    monthly,
-    yearly: round2(projecting * 12),
-    three_year: round2(projecting * 36),
+    monthly: round2(income - spent),
   };
-}
-
-/**
- * The month split by how much control we have over it.
- *
- * This is what turns "spend less" into something actionable: it names the
- * portion of the month that is genuinely available to move. A household whose
- * rigid share is most of its income has a different problem — and a different
- * remedy — from one whose liquid share is.
- */
-export function commitmentBreakdown(envelopes: EnvelopeRow[]): CommitmentSlice[] {
-  const totalAllocated = envelopes.reduce((sum, e) => sum + e.allocated, 0);
-  return COMMITMENTS.map((commitment) => {
-    const mine = envelopes.filter((e) => e.commitment === commitment);
-    const allocated = round2(mine.reduce((sum, e) => sum + e.allocated, 0));
-    return {
-      commitment,
-      allocated,
-      spent: round2(mine.reduce((sum, e) => sum + e.spent, 0)),
-      // No allocation at all is 0%, not NaN — a month before anyone has
-      // budgeted must render as an empty ladder, not as broken arithmetic.
-      share: totalAllocated > 0 ? round2(allocated / totalAllocated) : 0,
-    };
-  });
-}
-
-/** Whether enough is set aside for the things nobody sees coming. */
-export function unplannedCheck(envelopes: EnvelopeRow[]): UnplannedCheck {
-  const totalAllocated = envelopes.reduce((sum, e) => sum + e.allocated, 0);
-  const allocated = round2(
-    envelopes.filter((e) => e.commitment === 'unplanned').reduce((sum, e) => sum + e.allocated, 0),
-  );
-  const share = totalAllocated > 0 ? allocated / totalAllocated : 0;
-  const required = totalAllocated * UNPLANNED_FLOOR;
-  return {
-    allocated,
-    share: round2(share),
-    floor: UNPLANNED_FLOOR,
-    // An empty month passes: there is nothing yet to be under-provisioned
-    // against, and nagging before the first allocation teaches people to
-    // ignore the warning that matters later.
-    meets_floor: totalAllocated === 0 || allocated >= required,
-    shortfall: totalAllocated === 0 ? 0 : round2(Math.max(0, required - allocated)),
-  };
-}
-
-/**
- * What each category actually costs, from the months we have.
- *
- * The method's first stage is to map three real months before budgeting a
- * shekel, because a target invented from nothing is a wish. We hold every
- * transaction already, so this is arithmetic rather than homework.
- *
- * The divisor is the number of months that actually carried activity, not a
- * flat three. A household two months into using this would otherwise see every
- * average understated by a third and quietly under-budget on the strength of
- * it — so a one-month average is reported as a one-month average.
- */
-export function categoryAverages(params: {
-  month: string;
-  categories: Category[];
-  spends: SpendInput[];
-  lookback?: number;
-}): CategoryAverage[] {
-  const { month, categories, spends, lookback = 3 } = params;
-
-  const window: string[] = [];
-  let cursor = month;
-  for (let i = 0; i < lookback; i++) {
-    cursor = previousMonth(cursor);
-    window.push(cursor);
-  }
-
-  const active = new Set(spends.filter((s) => window.includes(s.month) && s.amount !== 0).map((s) => s.month));
-  const divisor = Math.max(1, active.size);
-
-  const incomeIds = new Set(categories.filter((c) => c.kind === 'income').map((c) => c.id));
-  const totals = new Map<number, number>();
-  for (const s of spends) {
-    if (s.category_id == null || incomeIds.has(s.category_id)) continue;
-    if (!window.includes(s.month)) continue;
-    totals.set(s.category_id, (totals.get(s.category_id) ?? 0) + -s.amount);
-  }
-
-  return categories
-    .filter((c) => c.kind !== 'income' && !c.archived_at)
-    .map((c) => ({
-      category_id: c.id,
-      category_name: c.name,
-      average: round2((totals.get(c.id) ?? 0) / divisor),
-      months_observed: active.size,
-    }));
 }
 
 // ── Who owes whom ────────────────────────────────────────────────────────
