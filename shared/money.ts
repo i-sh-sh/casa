@@ -1,6 +1,46 @@
 import type {
   BudgetMonth, EnvelopeRow, Category, BalanceBetweenUs, CashFlow,
+  Commitment, CommitmentSlice, UnplannedCheck,
 } from './types.js';
+
+/**
+ * The ladder, from least control to most. Order matters — it is how it reads.
+ *
+ * This is a *classification*, not a figure: it says what could be done about a
+ * category, and it changes no amount anywhere. That distinction is why it came
+ * back after the clear-out — «בלי הזרקות חיצוניות» was about numbers the app
+ * invented and put in the household's budget, and this invents nothing. It
+ * reads what they typed and groups it.
+ *
+ * What it answers is the only question worth asking when a month does not
+ * work: «לצמצם הוצאות» is not advice, and «מתוך ₪9,700 — ₪3,570 קשיחות ו-₪1,450
+ * נזילות» is, because it points at the part that can actually move.
+ */
+export const COMMITMENTS: readonly Commitment[] = ['rigid', 'flexible', 'liquid', 'unplanned'];
+
+export const COMMITMENT_LABELS: Record<Commitment, string> = {
+  rigid: 'קשיחות',
+  flexible: 'גמישות',
+  liquid: 'נזילות',
+  unplanned: 'לא צפויות',
+};
+
+export const COMMITMENT_NOTES: Record<Commitment, string> = {
+  rigid: 'קבועות, או כאלה שקשה לשנות',
+  flexible: 'חייבים לשלם משהו — כמה, זה חלקית בידינו',
+  liquid: 'החלטה מלאה שלנו. כאן נחסך חודש',
+  unplanned: 'מה שלא רואים מראש, ודווקא לכן מתקצבים',
+};
+
+/**
+ * The share of the month to set aside for the unforeseen: 5%.
+ *
+ * Also a reading rather than an injection. It never writes a shekel into any
+ * envelope and never fills a box — it looks at what the household allocated and
+ * says whether the part they set aside for what they cannot see coming clears
+ * the floor, and by how much it misses.
+ */
+export const UNPLANNED_FLOOR = 0.05;
 
 /*
  * ═════════════════════════════════════════════════════════════════════════
@@ -176,6 +216,7 @@ export function buildBudgetMonth(params: {
         group_id: c.group_id,
         group_name: c.group_name,
         kind: c.kind,
+        commitment: c.commitment,
         allocated: put,
         spent: took,
         available: round2(put - took),
@@ -206,6 +247,50 @@ export function buildBudgetMonth(params: {
     // Every shekel that left, filed or not. This is the one figure on the
     // screen that claims to be about the account rather than about the budget.
     flow: cashFlow(round2(income), round2(spentTotal + unfiled)),
+    // Two readings of the same allocations, neither of which changes one.
+    commitments: commitmentBreakdown(envelopes),
+    unplanned: unplannedCheck(envelopes),
+  };
+}
+
+/**
+ * The month split by how much control the household has over it.
+ *
+ * Computed from this month's allocations only, like everything else here.
+ */
+export function commitmentBreakdown(envelopes: EnvelopeRow[]): CommitmentSlice[] {
+  const totalAllocated = envelopes.reduce((sum, e) => sum + e.allocated, 0);
+  return COMMITMENTS.map((commitment) => {
+    const mine = envelopes.filter((e) => e.commitment === commitment);
+    const allocated = round2(mine.reduce((sum, e) => sum + e.allocated, 0));
+    return {
+      commitment,
+      allocated,
+      spent: round2(mine.reduce((sum, e) => sum + e.spent, 0)),
+      // No allocation at all is 0%, not NaN — a month before anyone has
+      // budgeted must render as an empty ladder, not as broken arithmetic.
+      share: totalAllocated > 0 ? round2(allocated / totalAllocated) : 0,
+    };
+  });
+}
+
+/** Whether enough is set aside for the things nobody sees coming. */
+export function unplannedCheck(envelopes: EnvelopeRow[]): UnplannedCheck {
+  const totalAllocated = envelopes.reduce((sum, e) => sum + e.allocated, 0);
+  const allocated = round2(
+    envelopes.filter((e) => e.commitment === 'unplanned').reduce((sum, e) => sum + e.allocated, 0),
+  );
+  const share = totalAllocated > 0 ? allocated / totalAllocated : 0;
+  const required = totalAllocated * UNPLANNED_FLOOR;
+  return {
+    allocated,
+    share: round2(share),
+    floor: UNPLANNED_FLOOR,
+    // An empty month passes: there is nothing yet to be under-provisioned
+    // against, and nagging before the first allocation teaches people to
+    // ignore the warning that matters later.
+    meets_floor: totalAllocated === 0 || allocated >= required,
+    shortfall: totalAllocated === 0 ? 0 : round2(Math.max(0, required - allocated)),
   };
 }
 

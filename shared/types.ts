@@ -113,6 +113,8 @@ export interface EnvelopeRow {
   group_id: number | null;
   group_name: string | null;
   kind: CategoryKind;
+  /** What could be done about this category — a classification, never an amount. */
+  commitment: Commitment;
   /** What we put in this envelope, this month. */
   allocated: number;
   /** What left it this month, as a positive number. */
@@ -133,6 +135,10 @@ export interface BudgetMonth {
   to_be_budgeted: number;
   /** This month's income minus this month's spending. */
   flow: CashFlow;
+  /** The month split by how much control we have over it. */
+  commitments: CommitmentSlice[];
+  /** Whether enough is set aside for the things we cannot see coming. */
+  unplanned: UnplannedCheck;
 }
 
 /**

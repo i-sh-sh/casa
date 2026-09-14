@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildBudgetMonth, round2 } from '../../shared/money.ts';
+import { buildBudgetMonth, commitmentBreakdown, round2, unplannedCheck } from '../../shared/money.ts';
 import type { Category } from '../../shared/types.ts';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -27,14 +27,20 @@ function code(source: string): string {
 /**
  * The budget shows figures the household typed, and differences between them.
  *
- * It used to do more: roll balances between months, split the month into a
- * ladder of rigid/flexible/liquid/unplanned, hold a 5% floor for the
- * unforeseen, offer a three-month average as a suggestion, and fill a whole
- * month from targets that shipped in the seed. Every one of those was a number
- * on the screen that nobody in the house had chosen, and the request that
- * removed them was «בלי הזרקות חיצוניות».
+ * The line these tests hold is not «nothing computed» — it is **nothing
+ * invented**. Two things sit on either side of it:
  *
- * These tests are what stops any of it coming back by accident.
+ * - A figure the app made up and put in the household's budget: a seeded
+ *   ₪5,000 target, a button that fills a month from those targets, a
+ *   three-month average typed into the allocation box. Those are gone, and
+ *   these tests keep them gone.
+ * - A reading of what the household typed: grouping their own allocations by
+ *   how much control they have over each (the ladder), or checking what they
+ *   set aside for the unforeseen against a stated 5% floor. Those invent
+ *   nothing, and they came back.
+ *
+ * Rollover is gone for a different reason again: it was not from the method,
+ * and it made «נשאר» impossible to recompute in your head.
  */
 
 test('available is always allocated minus spent, for every envelope', () => {
@@ -65,15 +71,21 @@ test('available is always allocated minus spent, for every envelope', () => {
   assert.equal(result.envelopes.find((e) => e.category_id === 1)!.available, 699.75);
 });
 
-test('the seed ships names, never amounts', () => {
-  // A structure worth suggesting; figures that were only ever plausible.
+test('the seed ships names and classifications, never amounts', () => {
+  // A structure worth suggesting; figures that were only ever plausible. The
+  // rung is structure — «שכירות is hard to change» is the same kind of claim as
+  // «there is a category called שכירות», and both are editable.
   const seed = code(read('api/admin/_seed.ts'));
   const categories = seed.slice(seed.indexOf('INSERT INTO categories'), seed.indexOf('INSERT INTO accounts'));
   assert.ok(!/monthly_target/.test(categories), 'the seed sets a monthly target');
-  assert.ok(!/\b(rigid|flexible|liquid|unplanned)\b/.test(categories), 'the seed sets a commitment rung');
-  // Every VALUES row is (group, name, kind, order) — four fields, no figure.
-  const rows = [...categories.matchAll(/\('[^']+',\s*'[^']+',\s*'(spending|income|saving)',\s*\d+\)/g)];
+  // Every VALUES row is (group, name, kind, rung, order) — no figure among them.
+  const rows = [...categories.matchAll(
+    /\('[^']+',\s*'[^']+',\s*'(?:spending|income|saving)',\s*'(?:rigid|flexible|liquid|unplanned)',\s*\d+\)/g,
+  )];
   assert.ok(rows.length >= 25, `expected the seeded categories, found ${rows.length}`);
+  // Nothing in the block may be a bare number other than a sort order.
+  const figures = [...categories.matchAll(/,\s*(\d{2,})\s*[,)]/g)];
+  assert.deepEqual(figures.map((m) => m[1]), [], 'a figure is seeded into a category');
 });
 
 test('no endpoint fills a budget on the household\'s behalf', () => {
@@ -88,7 +100,10 @@ test('no endpoint fills a budget on the household\'s behalf', () => {
 
 test('the budget screen offers no button that types a figure for you', () => {
   const screen = code(read('src/features/money/BudgetScreen.tsx'));
-  for (const gone of ['Ladder', 'Projection', 'autofill', 'average', 'monthly_target', 'COMMITMENT']) {
+  // Projection multiplied a deficit out to three years; autofill and the
+  // average typed into the box. The ladder and COMMITMENT_* are not on this
+  // list: they read the allocations, they never write one.
+  for (const gone of ['Projection', 'autofill', 'average', 'monthly_target']) {
     assert.ok(!new RegExp(gone).test(screen), `${gone} is back on the budget screen`);
   }
   // Exactly one thing writes the allocation box, and it is the person typing
@@ -101,7 +116,9 @@ test('the budget screen offers no button that types a figure for you', () => {
 
 test('the model exports nothing that invents a number', () => {
   const money = code(read('shared/money.ts'));
-  for (const gone of ['categoryAverages', 'commitmentBreakdown', 'unplannedCheck', 'UNPLANNED_FLOOR']) {
+  // The average is the only one of these that ever produced a figure for
+  // somebody to accept; the ladder and the floor only ever grouped or checked.
+  for (const gone of ['categoryAverages']) {
     assert.ok(!new RegExp(`export .*${gone}`).test(money), `${gone} is exported again`);
   }
   // Cash flow is a subtraction, not a forecast.
@@ -113,9 +130,61 @@ test('the guide does not describe features the app no longer has', () => {
   // A guide showing a ladder the app dropped is worse than no guide, and three
   // couples are about to be handed the link.
   const guide = read('public/guide.html');
-  for (const claim of ['43,200', 'הסולם', 'קשיחות', 'רמת מחויבות', 'בפועל · ₪']) {
+  for (const claim of ['43,200', 'בפועל · ₪', 'היעד · ₪']) {
     assert.ok(!guide.includes(claim), `the guide still promises «${claim}»`);
   }
+});
+
+test('the ladder reads the allocations and writes none of them', () => {
+  // The whole basis for bringing it back: it is a reading, so it must leave
+  // what it read exactly as it found it. Asserted by behaviour rather than by
+  // grepping for an assignment — the first version of this test matched a local
+  // named `allocated` and failed against correct code.
+  const cat = (id: number, name: string, commitment: Category['commitment']): Category => ({
+    id, group_id: 1, group_name: 'ג', name, kind: 'spending', commitment,
+    monthly_target: null, icon: null, sort_order: 0, archived_at: null,
+  });
+  const result = buildBudgetMonth({
+    month: '2026-09-01',
+    categories: [cat(1, 'שכירות', 'rigid'), cat(2, 'מסעדות', 'liquid'), cat(3, 'בלת״מ', 'unplanned')],
+    allocations: [
+      { month: '2026-09-01', category_id: 1, allocated: 5000 },
+      { month: '2026-09-01', category_id: 2, allocated: 800 },
+      { month: '2026-09-01', category_id: 3, allocated: 200 },
+    ],
+    spends: [],
+  });
+
+  const before = JSON.stringify(result.envelopes);
+  commitmentBreakdown(result.envelopes);
+  unplannedCheck(result.envelopes);
+  assert.equal(JSON.stringify(result.envelopes), before, 'reading the ladder changed the envelopes');
+
+  // Every rung's allocation is exactly the sum of its own envelopes.
+  const rigid = result.commitments.find((c) => c.commitment === 'rigid')!;
+  assert.equal(rigid.allocated, 5000);
+  assert.equal(rigid.share, round2(5000 / 6000));
+  assert.equal(
+    result.commitments.reduce((sum, c) => sum + c.allocated, 0), result.allocated,
+    'the ladder does not add up to the month',
+  );
+
+  // 200 of 6,000 is 3.3% — under the floor, and the gap is stated.
+  assert.equal(result.unplanned.meets_floor, false);
+  assert.equal(result.unplanned.shortfall, 100);
+});
+
+test('a month nobody has budgeted is not nagged about the floor', () => {
+  const cat = (id: number, name: string): Category => ({
+    id, group_id: 1, group_name: 'ג', name, kind: 'spending', commitment: 'flexible',
+    monthly_target: null, icon: null, sort_order: 0, archived_at: null,
+  });
+  const result = buildBudgetMonth({
+    month: '2026-09-01', categories: [cat(1, 'סופר')], allocations: [], spends: [],
+  });
+  assert.equal(result.unplanned.meets_floor, true, 'warning before the first allocation teaches people to ignore it');
+  assert.equal(result.unplanned.shortfall, 0);
+  assert.ok(result.commitments.every((c) => c.share === 0), 'an empty month is an empty ladder, not NaN');
 });
 
 test('money spent without a category is counted, not dropped', () => {

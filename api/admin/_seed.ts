@@ -16,10 +16,15 @@
 // budget it never chose sitting in the same typeface as the figures it did.
 // The structure is a suggestion worth making; the numbers never were.
 //
-// `commitment` is not seeded either, and the ladder that read it is gone from
-// the app. `icon` was dropped for its own reason: an icon that repeats the
-// word beside it is decoration, and an emoji is font-dependent, unstyleable,
-// and the clearest single signal that nobody chose it. See docs/DESIGN.md §6.
+// `commitment` **is** seeded, and that is not a contradiction of the line
+// above. It is a classification, not a figure — it says what could be done
+// about a category, and it moves no money anywhere. Naming שכירות as rigid is
+// the same kind of suggestion as naming the category שכירות in the first
+// place, and every one of them is changeable from the allocation sheet.
+//
+// `icon` was dropped for its own reason: an icon that repeats the word beside
+// it is decoration, and an emoji is font-dependent, unstyleable, and the
+// clearest single signal that nobody chose it. See docs/DESIGN.md §6.
 //
 // Leaving a column out of the INSERT is also the safe form: a VALUES column
 // that is NULL in every row gives Postgres nothing to infer a type from, and
@@ -31,53 +36,53 @@ INSERT INTO category_groups (name, sort_order) VALUES
   ('חיסכון', 5), ('לא צפויות', 6), ('הכנסות', 7)
 ON CONFLICT (household_id, lower(name)) DO NOTHING;
 
-INSERT INTO categories (group_id, name, kind, sort_order)
-SELECT g.id, v.name, v.kind, v.ord
+INSERT INTO categories (group_id, name, kind, commitment, sort_order)
+SELECT g.id, v.name, v.kind, v.commitment, v.ord
   FROM (VALUES
-    ('קבועות', 'שכר דירה / משכנתא', 'spending', 0),
-    ('קבועות', 'ארנונה', 'spending', 1),
-    ('קבועות', 'ועד בית', 'spending', 2),
-    ('קבועות', 'חשמל', 'spending', 3),
-    ('קבועות', 'מים', 'spending', 4),
-    ('קבועות', 'גז', 'spending', 5),
-    ('קבועות', 'אינטרנט וטלוויזיה', 'spending', 6),
-    ('קבועות', 'סלולר', 'spending', 7),
-    ('קבועות', 'ביטוחים', 'spending', 8),
+    ('קבועות', 'שכר דירה / משכנתא', 'spending', 'rigid', 0),
+    ('קבועות', 'ארנונה', 'spending', 'rigid', 1),
+    ('קבועות', 'ועד בית', 'spending', 'rigid', 2),
+    ('קבועות', 'חשמל', 'spending', 'flexible', 3),
+    ('קבועות', 'מים', 'spending', 'flexible', 4),
+    ('קבועות', 'גז', 'spending', 'flexible', 5),
+    ('קבועות', 'אינטרנט וטלוויזיה', 'spending', 'rigid', 6),
+    ('קבועות', 'סלולר', 'spending', 'rigid', 7),
+    ('קבועות', 'ביטוחים', 'spending', 'rigid', 8),
 
-    ('יומיום', 'סופר', 'spending', 0),
-    ('יומיום', 'קפה ומסעדות', 'spending', 1),
-    ('יומיום', 'דלק ותחבורה', 'spending', 2),
-    ('יומיום', 'פארמה', 'spending', 3),
+    ('יומיום', 'סופר', 'spending', 'flexible', 0),
+    ('יומיום', 'קפה ומסעדות', 'spending', 'liquid', 1),
+    ('יומיום', 'דלק ותחבורה', 'spending', 'flexible', 2),
+    ('יומיום', 'פארמה', 'spending', 'flexible', 3),
 
-    ('הבית', 'ריהוט וציוד', 'spending', 0),
-    ('הבית', 'תיקונים ותחזוקה', 'spending', 1),
-    ('הבית', 'ניקיון', 'spending', 2),
+    ('הבית', 'ריהוט וציוד', 'spending', 'liquid', 0),
+    ('הבית', 'תיקונים ותחזוקה', 'spending', 'flexible', 1),
+    ('הבית', 'ניקיון', 'spending', 'flexible', 2),
 
-    ('אישי', 'ביגוד', 'spending', 0),
-    ('אישי', 'תרבות ופנאי', 'spending', 1),
-    ('אישי', 'מתנות', 'spending', 2),
-    ('אישי', 'ספורט', 'spending', 3),
+    ('אישי', 'ביגוד', 'spending', 'liquid', 0),
+    ('אישי', 'תרבות ופנאי', 'spending', 'liquid', 1),
+    ('אישי', 'מתנות', 'spending', 'liquid', 2),
+    ('אישי', 'ספורט', 'spending', 'liquid', 3),
 
-    ('בריאות', 'קופת חולים', 'spending', 0),
-    ('בריאות', 'שיניים', 'spending', 1),
+    ('בריאות', 'קופת חולים', 'spending', 'rigid', 0),
+    ('בריאות', 'שיניים', 'spending', 'flexible', 1),
 
     -- Savings are categories like any other, and the discipline is the same:
     -- an amount that only gets put aside when something is left over never
     -- gets put aside. The kind 'saving' marks them as not-an-expense; what
     -- goes into them each month is for the household to decide, exactly like
     -- everything else here.
-    ('חיסכון', 'קרן חירום', 'saving', 0),
-    ('חיסכון', 'חופשה', 'saving', 1),
-    ('חיסכון', 'רכב', 'saving', 2),
+    ('חיסכון', 'קרן חירום', 'saving', 'rigid', 0),
+    ('חיסכון', 'חופשה', 'saving', 'liquid', 1),
+    ('חיסכון', 'רכב', 'saving', 'rigid', 2),
 
     -- The category most budgets leave out, which is why most budgets break.
     -- A wedding, a dentist, a phone that shattered: never the same thing
     -- twice, and never actually a surprise that *something* happened.
-    ('לא צפויות', 'בלת״מ', 'spending', 0),
+    ('לא צפויות', 'בלת״מ', 'spending', 'unplanned', 0),
 
-    ('הכנסות', 'משכורת', 'income', 0),
-    ('הכנסות', 'הכנסה אחרת', 'income', 1)
-  ) AS v(grp, name, kind, ord)
+    ('הכנסות', 'משכורת', 'income', 'rigid', 0),
+    ('הכנסות', 'הכנסה אחרת', 'income', 'flexible', 1)
+  ) AS v(grp, name, kind, commitment, ord)
   JOIN category_groups g ON g.name = v.grp
 ON CONFLICT DO NOTHING;
 

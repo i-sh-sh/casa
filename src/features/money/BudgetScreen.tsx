@@ -4,8 +4,11 @@ import { Link } from '../../lib/router.js';
 import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
-import { formatILS, monthKey, nextMonth, previousMonth } from '@shared/money.js';
-import type { BudgetMonth, EnvelopeRow } from '@shared/types.js';
+import {
+  COMMITMENTS, COMMITMENT_LABELS, COMMITMENT_NOTES,
+  formatILS, monthKey, nextMonth, previousMonth,
+} from '@shared/money.js';
+import type { BudgetMonth, Commitment, EnvelopeRow } from '@shared/types.js';
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
@@ -29,6 +32,13 @@ function monthLabel(month: string): string {
  * house had chosen, next to numbers they had, in the same typeface — and a
  * budget nobody can recompute in their head is one they cannot argue with.
  * Arguing with it, out loud, between two people, is the entire product.
+ *
+ * Two of them came back, on a distinction worth keeping: **the ladder and the
+ * 5% floor invent nothing.** They read the household's own allocations and
+ * group them, or check one part against the whole. What stayed out are the
+ * three that actually typed a figure into somebody's budget — the seeded
+ * targets, the button that filled a month from them, and the three-month
+ * average — along with rollover, which was never from the method at all.
  */
 export function BudgetScreen() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
@@ -87,6 +97,8 @@ export function BudgetScreen() {
                 <Line label="לא תוקצב" value={data.to_be_budgeted} />
               </div>
             </section>
+
+            <Ladder data={data} />
 
             {/* Spent with no category, so in no envelope. Named rather than
                 merely counted: it is in the month's flow either way, and the
@@ -181,6 +193,65 @@ export function BudgetScreen() {
   );
 }
 
+/**
+ * Where the give is.
+ *
+ * Not a figure the app invented — a regrouping of the household's own
+ * allocations by how much control they have over each one. «לצמצם הוצאות» is
+ * not advice; «מתוך ₪9,700, ₪3,570 קשיחות ו-₪1,450 נזילות» is, because it
+ * names the part that can actually move.
+ *
+ * It draws nothing before the first allocation: a ladder of four zeroes teaches
+ * people to skip the section, and by the time it has something to say they have
+ * learned to.
+ */
+function Ladder({ data }: { data: BudgetMonth }) {
+  const { commitments, unplanned } = data;
+  if (commitments.every((c) => c.allocated === 0)) return null;
+
+  return (
+    <section className="section">
+      <h2>איפה יש גמישות <span className="count">· הוקצה ₪</span></h2>
+      <div className="rows">
+        {COMMITMENTS.map((key) => {
+          const slice = commitments.find((c) => c.commitment === key);
+          if (!slice) return null;
+          return (
+            <div className="row" key={key}>
+              <span className="grow">
+                <span className="title" style={{ display: 'block' }}>{COMMITMENT_LABELS[key]}</span>
+                <span className="meter" style={{ maxWidth: 180 }} aria-hidden="true">
+                  <i style={{ width: `${Math.round(slice.share * 100)}%` }} />
+                </span>
+                <span className="meta">{COMMITMENT_NOTES[key]}</span>
+              </span>
+              <span className="margin-col n">{Math.round(slice.share * 100)}%</span>
+              <span className="n amount">{formatILS(slice.allocated, { symbol: false })}</span>
+            </div>
+          );
+        })}
+      </div>
+
+      {!unplanned.meets_floor && (
+        <div className="note-error" role="status">
+          <div style={{ display: 'flex', gap: 'var(--s2)', alignItems: 'flex-start' }}>
+            <Icon name="alert" size={18} />
+            <div style={{ flex: 1 }}>
+              לבלת״מ מוקצים <span className="n">{Math.round(unplanned.share * 100)}%</span> מהחודש.
+              מומלץ <span className="n">5%</span> לפחות — חסרים{' '}
+              <span className="n">{formatILS(unplanned.shortfall)}</span>.
+              <div style={{ marginTop: 'var(--s1)', fontSize: 14 }}>
+                תמיד יש בלת״מ. חתונה, רופא שיניים, טלפון שנשבר — אף פעם לא אותו דבר,
+                ואף פעם לא באמת הפתעה ש<em>משהו</em> קרה.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function Line({ label, value }: { label: string; value: number }) {
   return (
     <div className="row" style={{ minHeight: 40 }}>
@@ -205,7 +276,8 @@ function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void })
             what left, out of what was put in. The figure at the end is the
             difference, and there is nowhere else it could have come from. */}
         <span className="meta">
-          הוצא <span className="n">{formatILS(env.spent, { symbol: false })}</span>
+          {COMMITMENT_LABELS[env.commitment]}
+          {' · הוצא '}<span className="n">{formatILS(env.spent, { symbol: false })}</span>
           {' מתוך '}<span className="n">{formatILS(env.allocated, { symbol: false })}</span>
           {over && <> · <span className="mark mark-red">חריגה</span></>}
         </span>
@@ -236,6 +308,7 @@ function AllocateSheet({ env, month, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const [allocated, setAllocated] = useState(String(env.allocated));
+  const [commitment, setCommitment] = useState<Commitment>(env.commitment);
   const willBe = (Number(allocated) || 0) - env.spent;
 
   return (
@@ -244,11 +317,28 @@ function AllocateSheet({ env, month, onClose, onSaved }: {
         submitLabel="שמירה"
         onSubmit={async () => {
           await api.put(`/money/budget/${env.category_id}`, { month, allocated: Number(allocated) || 0 });
+          // The rung belongs to the category, not to the month, so it is a
+          // separate write — and only when it actually changed.
+          if (commitment !== env.commitment) {
+            await api.patch(`/money/categories/${env.category_id}`, { commitment });
+          }
           onSaved();
         }}
       >
         <Field label="לתקצב החודש · ₪">
           <input className="input" type="number" inputMode="decimal" step="10" value={allocated} onChange={(e) => setAllocated(e.target.value)} autoFocus style={{ fontSize: 24 }} />
+        </Field>
+
+        {/* The classification the ladder groups by, editable here.
+            It used to arrive from the seed and could not be changed anywhere —
+            which made the ladder a statement about a list somebody else wrote.
+            Whether שכירות is rigid for this household is theirs to say. */}
+        <Field label="מה אפשר לעשות עם זה">
+          <select className="select" value={commitment} onChange={(e) => setCommitment(e.target.value as Commitment)}>
+            {COMMITMENTS.map((c) => (
+              <option key={c} value={c}>{COMMITMENT_LABELS[c]} — {COMMITMENT_NOTES[c]}</option>
+            ))}
+          </select>
         </Field>
 
         <div className="rows" style={{ marginBottom: 'var(--s5)' }}>
