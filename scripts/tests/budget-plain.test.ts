@@ -117,3 +117,49 @@ test('the guide does not describe features the app no longer has', () => {
     assert.ok(!guide.includes(claim), `the guide still promises «${claim}»`);
   }
 });
+
+test('money spent without a category is counted, not dropped', () => {
+  // Found by reading a real month back out of Postgres rather than by reasoning
+  // about it: ₪75 left the account on an uncategorised row and appeared in no
+  // figure on the screen — not in «הוצא», not in any envelope, not in the flow.
+  // The headline says income minus spending; it was quietly income minus
+  // *filed* spending, too kind by exactly what the household had not got round
+  // to categorising.
+  const cat = (id: number, name: string): Category => ({
+    id, group_id: 1, group_name: 'ג', name, kind: 'spending', commitment: 'flexible',
+    monthly_target: null, icon: null, sort_order: 0, archived_at: null,
+  });
+  const result = buildBudgetMonth({
+    month: '2026-09-01',
+    categories: [cat(1, 'סופר'), cat(9, 'משכורת')],
+    allocations: [{ month: '2026-09-01', category_id: 1, allocated: 2500 }],
+    spends: [
+      { month: '2026-09-01', category_id: null, amount: 14_000 },  // income, unfiled
+      { month: '2026-09-01', category_id: 1, amount: -1200 },
+      { month: '2026-09-01', category_id: null, amount: -75 },     // spend, unfiled
+    ],
+  });
+
+  assert.equal(result.unfiled, 75, 'the unfiled spend is not reported');
+  assert.equal(result.spent, 1200, 'envelope spending stays envelope spending');
+  assert.equal(result.flow.spent, 1275, 'the flow must count every shekel that left');
+  assert.equal(result.flow.monthly, 12_725, '14,000 in, 1,275 out');
+
+  // An uncategorised *deposit* is still income — that half was already right.
+  assert.equal(result.income, 14_000);
+});
+
+test('a month with everything filed reports no unfiled spending', () => {
+  const cat = (id: number, name: string): Category => ({
+    id, group_id: 1, group_name: 'ג', name, kind: 'spending', commitment: 'flexible',
+    monthly_target: null, icon: null, sort_order: 0, archived_at: null,
+  });
+  const result = buildBudgetMonth({
+    month: '2026-09-01',
+    categories: [cat(1, 'סופר')],
+    allocations: [{ month: '2026-09-01', category_id: 1, allocated: 500 }],
+    spends: [{ month: '2026-09-01', category_id: 1, amount: -120 }],
+  });
+  assert.equal(result.unfiled, 0);
+  assert.equal(result.flow.spent, 120);
+});

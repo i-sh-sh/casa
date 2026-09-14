@@ -88,6 +88,24 @@ export function BudgetScreen() {
               </div>
             </section>
 
+            {/* Spent with no category, so in no envelope. Named rather than
+                merely counted: it is in the month's flow either way, and the
+                only way to see which rows they are is to be told they exist. */}
+            {data.unfiled !== 0 && (
+              <section className="section">
+                <h2>לא שויך לקטגוריה</h2>
+                <div className="rows">
+                  <div className="row" style={{ borderBottom: 0 }}>
+                    <span className="grow meta">
+                      יצא מהחשבון ונספר בתזרים, אבל לא נכנס לשום מעטפה.
+                      {' '}<Link to="/transactions">לפתוח את התנועות</Link> ולשייך.
+                    </span>
+                    <span className="n amount">{formatILS(data.unfiled, { symbol: false })}</span>
+                  </div>
+                </div>
+              </section>
+            )}
+
             {data.envelopes.length === 0 && (
               <Empty
                 headline="אין עדיין קטגוריות"

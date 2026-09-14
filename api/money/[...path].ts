@@ -69,11 +69,22 @@ async function listCategories(): Promise<Category[]> {
 async function budgetInputs(month: string) {
   const [categories, allocations, spends] = await Promise.all([
     listCategories(),
+    // One month, in the query as well as in the model.
+    //
+    // Both of these used to reach back to the beginning of time, because the
+    // envelopes rolled forward and every past allocation and spend counted
+    // towards this month's «נשאר». Nothing carries now, so all of that history
+    // was fetched, shipped, and discarded — on every open of the budget screen,
+    // growing with every month the household stays.
     query<{ month: string; category_id: number; allocated: number }>(
       `SELECT to_char(month, 'YYYY-MM-DD') AS month, category_id, allocated
-         FROM budget_allocations WHERE month <= $1::date`,
+         FROM budget_allocations WHERE month = $1::date`,
       [month],
     ),
+    // `transfer_id IS NULL` is doing quiet work: moving ₪1,000 from the current
+    // account to savings writes two rows, −1,000 and +1,000, neither with a
+    // category. Without this the +1,000 would be read as income, because an
+    // uncategorised positive amount is exactly what income looks like.
     query<{ month: string; category_id: number | null; amount: number }>(
       `SELECT to_char(date_trunc('month', occurred_on), 'YYYY-MM-DD') AS month,
               category_id,
@@ -81,6 +92,7 @@ async function budgetInputs(month: string) {
          FROM transactions
         WHERE deleted_at IS NULL
           AND transfer_id IS NULL
+          AND occurred_on >= $1::date
           AND occurred_on < ($1::date + INTERVAL '1 month')
         GROUP BY 1, 2`,
       [month],

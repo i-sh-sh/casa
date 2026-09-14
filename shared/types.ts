@@ -127,6 +127,8 @@ export interface BudgetMonth {
   income: number;
   allocated: number;
   spent: number;
+  /** Spent this month with no category, so in no envelope. Counted in `flow`. */
+  unfiled: number;
   /** This month's income minus what this month's budget claims. */
   to_be_budgeted: number;
   /** This month's income minus this month's spending. */

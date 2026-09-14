@@ -137,6 +137,10 @@ export function buildBudgetMonth(params: {
   // happens once, here.
   const spent = new Map<number, number>();
   let income = 0;
+  // Money that left the account without a category. It belongs to no envelope,
+  // and it is still spent — see `unfiled` below for why that distinction was
+  // costing the month its honesty.
+  let unfiled = 0;
 
   const incomeCategoryIds = new Set(categories.filter((c) => c.kind === 'income').map((c) => c.id));
 
@@ -154,7 +158,10 @@ export function buildBudgetMonth(params: {
       income += s.amount;
       continue;
     }
-    if (s.category_id == null) continue; // an unfiled spend: real, but in no envelope yet
+    if (s.category_id == null) {
+      unfiled += -s.amount;
+      continue;
+    }
     spent.set(s.category_id, (spent.get(s.category_id) ?? 0) + -s.amount);
   }
 
@@ -184,10 +191,21 @@ export function buildBudgetMonth(params: {
     income: round2(income),
     allocated: allocatedTotal,
     spent: spentTotal,
-    // This month's income, minus what this month's budget claims. Not a
-    // running account of every month since the beginning.
+    // Spent, but in no envelope. A transaction saved without a category is the
+    // easiest thing in the app to produce — the category field is optional, and
+    // in a queue it gets skipped.
+    //
+    // It used to be dropped on the floor here, which made the month's headline
+    // quietly false: «הכנסות פחות הוצאות» counted only the spending that had
+    // been filed, so a household with a few unfiled rows was shown a flow that
+    // was too kind by exactly the amount it had failed to categorise. Found by
+    // reading a real month back out of Postgres rather than by reasoning about
+    // it: ₪75 left the account and appeared in no figure on the screen.
+    unfiled: round2(unfiled),
     to_be_budgeted: round2(round2(income) - allocatedTotal),
-    flow: cashFlow(round2(income), spentTotal),
+    // Every shekel that left, filed or not. This is the one figure on the
+    // screen that claims to be about the account rather than about the budget.
+    flow: cashFlow(round2(income), round2(spentTotal + unfiled)),
   };
 }
 
