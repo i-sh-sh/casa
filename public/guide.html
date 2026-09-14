@@ -115,6 +115,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .meter.over>i{background:var(--red)}
 .mini{border:1px solid var(--ink);padding:8px 10px;font-size:13px;text-align:center;margin-top:10px}
 .warn{border-top:1px solid var(--red);border-bottom:1px solid var(--red);background:var(--red-wash);color:var(--red);padding:8px 10px;font-size:13px;margin-top:10px}
+/* The app's offline state is deliberately *not* the red pencil: the ticks are
+   real and will be sent, so the note is quiet and only a genuinely stuck
+   action is allowed to alarm anyone. The mock has to be quiet too. */
+.quiet{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:8px 0;font-size:12px;color:var(--ink-2);margin-top:10px}
 .bysys{border-inline-start:3px solid var(--blue);padding-inline-start:9px}
 .struck{text-decoration:line-through;text-decoration-color:var(--red);text-decoration-thickness:2px;color:var(--ink-3)}
 .nav{display:grid;grid-template-columns:repeat(5,1fr);border-top:1px solid var(--ink);margin:10px -12px 0}
@@ -156,12 +160,12 @@ svg{display:block;margin:0 auto 2px}
   <div class="top">
     <div class="wordmark">קאסה</div>
     <div class="grow"><span class="label">המדריך</span></div>
-    <span class="count n" id="clock">1 / 15</span>
+    <span class="count n" id="clock">1 / 18</span>
   </div>
 
   <main class="stage" id="stage">
 
-  <!-- 01 ─────────────────────────────────────────────────────────────── -->
+  <!-- 01 ──────────────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="9">
     <div class="phone">
       <div class="head">קאסה</div>
@@ -181,7 +185,29 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 02 ─────────────────────────────────────────────────────────────── -->
+  <!-- 02 · הבית שלכם ──────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">הגדרות</div>
+      <div class="body">
+        <div class="sect step" style="--i:0">מי בבית</div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">ישראל</span><span class="m">shsh@…</span></span><span class="label">בעל הבית</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">נעה</span><span class="m">noa@…</span></span><span class="label" style="border:1px solid var(--ink);padding:4px 8px">שותף</span></div>
+        <div class="sect step" style="--i:2">הזמנה</div>
+        <div class="mini step" style="--i:2">קישור הזמנה לשותף</div>
+        <div class="mini pulse" style="--i:3">קישור לצופה בלבד</div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">02 · הבית שלכם</div>
+      <h2>בית אחד, שני אנשים</h2>
+      <p>הראשון שנכנס פותח בית והופך ל<b>בעל הבית</b>. את השני מזמינים ב<b>קישור</b> — «הגדרות» ← «קישור הזמנה לשותף». הקישור תקף שבוע ולפעם אחת, ומי שפותח אותו מצטרף מיד.</p>
+      <p>התפקיד יושב בקישור עצמו: <b>«שותף» רואה ומשנה, «צופה» רואה ואינו משנה.</b> קישור לשותף נותן גישה לכל הכסף של הבית — שולחים אותו רק למי שמתכוונים לשתף איתו את הפנקס.</p>
+      <div class="why">בתים מופרדים <b>במסד עצמו</b>, לא בקוד: לכל טבלה מדיניות אבטחת שורות של Postgres, והמערכת מסרבת לעבוד מול מסד שבו ההפרדה אינה פעילה.</div>
+    </div>
+  </section>
+
+  <!-- 03 · מסך הבית ───────────────────────────────────────────────────── -->
   <section class="scene" data-dur="8">
     <div class="phone">
       <div class="head">בוקר טוב</div>
@@ -199,14 +225,14 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">02 · הבית</div>
+      <div class="idx">03 · מסך הבית</div>
       <h2>מה צריך תשומת לב היום</h2>
       <p>המסך הראשון מראה <b>רק דברים שיש עליהם פעולה</b>: משהו לקנות, משהו להשתמש בו לפני שיתקלקל, חשבון שמגיע, מישהו שצריך להחזיר לו.</p>
       <p>סעיף שאין לו מה לומר — <b>פשוט לא מודפס</b>. וכשאין כלום, המסך אומר את זה במפורש במקום להציג לוח מחוונים ריק.</p>
     </div>
   </section>
 
-  <!-- 03 ─────────────────────────────────────────────────────────────── -->
+  <!-- 04 · החודש ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">תקציב</div>
@@ -223,7 +249,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">03 · החודש</div>
+      <div class="idx">04 · החודש</div>
       <h2>שלושה מספרים, וחיסור אחד</h2>
       <p>מה שנכנס, מה שתוקצב, וההפרש. אם ההפרש שלילי — תקצבתם יותר ממה שיש, וזה נאמר במילים ולא מוכפל בשלוש שנים.</p>
       <p>כל מספר במסך הזה הוא סכום שהקלדתם, או חיסור בין שני סכומים שגם הם על המסך.</p>
@@ -231,7 +257,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 04 ─────────────────────────────────────────────────────────────── -->
+  <!-- 05 · הסולם ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="12">
     <div class="phone">
       <div class="head">איפה יש גמישות</div>
@@ -245,7 +271,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">04 · הסולם</div>
+      <div class="idx">05 · הסולם</div>
       <h2>לא «לצמצם» — <span dir="rtl">לדעת איפה</span></h2>
       <p>כל קטגוריה מסווגת לפי <b>כמה שליטה יש לכם עליה</b>: קשיחה, גמישה, נזילה, או לא צפויה.</p>
       <p>«לצמצם הוצאות» זו לא עצה. «מתוך ₪9,700 — ₪3,570 קשיחות ו־₪1,450 נזילות» זו כן, כי היא מצביעה על החלק שאפשר באמת להזיז.</p>
@@ -253,9 +279,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 05 ─────────────────────────────────────────────────────────────── -->
-
-  <!-- 05 ─────────────────────────────────────────────────────────────── -->
+  <!-- 06 · מעטפות ─────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="11">
     <div class="phone">
       <div class="head">קבועות</div>
@@ -269,7 +293,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">05 · מעטפות</div>
+      <div class="idx">06 · מעטפות</div>
       <h2>כמה עוד מותר על זה</h2>
       <p>לכל קטגוריה יש מעטפה. המספר הגדול בכל שורה הוא <b>כמה נשאר</b> — לא כמה הוצאתם. בנק כבר אומר לכם כמה הוצאתם; רק מעטפה אומרת כמה עוד מותר.</p>
       <p><b>כל חודש עומד בפני עצמו.</b> «נשאר» הוא מה שתקצבתם החודש פחות מה שהוצאתם החודש. לא יותר, ולא משהו שנגרר מאוגוסט.</p>
@@ -277,7 +301,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 06 ─────────────────────────────────────────────────────────────── -->
+  <!-- 07 · כמה לתקצב ──────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">קפה ומסעדות</div>
@@ -290,7 +314,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">06 · כמה לתקצב</div>
+      <div class="idx">07 · כמה לתקצב</div>
       <h2>החיסור קורה מול העיניים</h2>
       <p>מקלידים סכום, ומיד רואים מה הוא משאיר: <b>900 פחות 742 זה 158</b>. שלושת המספרים על אותו מסך, והתשובה לפני השמירה ולא אחריה.</p>
       <p>אין כאן כפתור שממלא את הסכום בשבילכם — לא ממוצע, לא יעד, לא «מילוי החודש».</p>
@@ -298,7 +322,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 07 ─────────────────────────────────────────────────────────────── -->
+  <!-- 08 · תנועות ─────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">תנועה חדשה</div>
@@ -315,14 +339,40 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">07 · תנועות</div>
+      <div class="idx">08 · תנועות</div>
       <h2>מי שילם, ועל חשבון מי</h2>
       <p>לכל תנועה יש <b>«מי שילם»</b>, וזה לא בהכרח מי שרשם אותה. בלי השדה הזה יודעים כמה הבית הוציא ולא יודעים מי בחיסרון.</p>
       <p><b>«משותף»</b> נכנס לאיזון בינינו. <b>«אישי»</b> לא נכנס אליו לעולם — מתנה שקניתם אחד לשני היא לא חוב.</p>
     </div>
   </section>
 
-  <!-- 08 ─────────────────────────────────────────────────────────────── -->
+  <!-- 09 · תיקון ──────────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">עריכת תנועה</div>
+      <div class="body">
+        <div class="label step" style="--i:0">סכום · ₪</div>
+        <div class="row step" style="--i:0;border-bottom:1px solid var(--ink)"><span class="g n" style="font-size:22px">248.90</span></div>
+        <div class="row step" style="--i:1"><span class="g label">למי</span><span>רמי לוי</span></div>
+        <div class="row step" style="--i:1"><span class="g label">קטגוריה</span><span>סופר</span></div>
+        <div class="row pulse" style="--i:2"><span class="g label">מי שילם</span><span>נעה</span></div>
+        <div class="quiet step" style="--i:3">למחוק את התנועה? היא תרד מהתקציב ומהאיזון.</div>
+        <div style="display:flex;gap:8px">
+          <span class="mini pulse" style="--i:4;flex:1;border-color:var(--red);color:var(--red)">מחיקה</span>
+          <span class="mini step" style="--i:4;flex:1">השארה</span>
+        </div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">09 · תיקון</div>
+      <h2>מה שהוקלד בחיפזון</h2>
+      <p>תנועה נרשמת בתור בקופה, ולכן נרשמת גם לא נכון: הספרה שחסרה, הקטגוריה השגויה, הכרטיס שבאמת שילם. <b>לחיצה על השורה פותחת אותה</b> — כל השורה, לא אייקון עיפרון.</p>
+      <p>הכי נפוץ לתיקון הוא דווקא <b>«מי שילם»</b>: הטלפון שרושם את הקנייה אינו תמיד הכרטיס ששילם עליה, וזה השדה שממנו מחושב האיזון ביניכם.</p>
+      <div class="why">מחיקה שואלת פעם אחת, ואומרת מה היא מורידה. במסד היא רכה — «מה נמחק כאן» חייב תשובה בחודש הבא — אבל מתוך האפליקציה אין ממנה דרך חזרה.</div>
+    </div>
+  </section>
+
+  <!-- 10 · איזון ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="9">
     <div class="phone">
       <div class="head">תנועות</div>
@@ -338,14 +388,14 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">08 · איזון</div>
+      <div class="idx">10 · איזון</div>
       <h2>מי חייב למי</h2>
       <p>המערכת מחלקת כל הוצאה משותפת שווה בשווה ומשווה למי שבאמת שילם. התוצאה נאמרת <b>במשפט עם שני שמות</b>, אף פעם לא כמספר עם סימן שצריך לפענח.</p>
       <p>«סגירה» רושמת החזר — והוא <b>לא נרשם כהוצאה חדשה</b>, רק מאפס את החוב.</p>
     </div>
   </section>
 
-  <!-- 09 ─────────────────────────────────────────────────────────────── -->
+  <!-- 11 · מזווה ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="11">
     <div class="phone">
       <div class="head">מזווה</div>
@@ -359,7 +409,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">09 · מזווה</div>
+      <div class="idx">11 · מזווה</div>
       <h2>הכמות המינימלית עושה הכול</h2>
       <p>לכל מוצר יש <b>כמות מינימלית</b>. ברגע שהמלאי יורד מתחתיה, המוצר נכנס לרשימת הקניות <b>לבד</b>. זה הכלל היחיד שהופך מלאי ממטלה לשירות.</p>
       <p>מינימום <span class="n">0</span> = «אל תטרידו אותי על זה».</p>
@@ -367,7 +417,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 10 ────────────────────────────────────────────────────────────── -->
+  <!-- 12 · תפוגה ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">מזווה</div>
@@ -380,7 +430,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">10 · תפוגה</div>
+      <div class="idx">12 · תפוגה</div>
       <h2>שני קרטונים, שני תאריכים</h2>
       <p>מלאי נשמר <b>לפי אצוות</b>, לא כמספר אחד. שני קרטוני חלב שנקנו בהפרש שבוע פגים בהפרש שבוע — ומספר בודד לא יכול לומר את זה.</p>
       <p>כשמשתמשים, הכמות יורדת <b>מהאצווה שפגה ראשונה</b>. כל סדר אחר זורק אוכל באופן שיטתי.</p>
@@ -388,7 +438,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 11 ────────────────────────────────────────────────────────────── -->
+  <!-- 13 · קניות ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="11">
     <div class="phone">
       <div class="head">רשימת קניות</div>
@@ -404,7 +454,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">11 · קניות</div>
+      <div class="idx">13 · קניות</div>
       <h2>בסדר ההליכה בסופר</h2>
       <p>הרשימה ממוינת <b>לפי מעברי החנות</b>, לא לפי סדר ההקלדה — סדר ההקלדה הוא הסדר היחיד שמבטיח לעבור את הסופר פעמיים.</p>
       <p>פריט עם <span class="mark-blue">קו כחול</span> נכנס לרשימה <b>מעצמו</b> כי נגמר במזווה. זו הערת שוליים של המערכת, כדי שהרשימה תסביר את עצמה ולא תיראה כאילו יש לה דעות משלה.</p>
@@ -412,7 +462,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 12 ────────────────────────────────────────────────────────────── -->
+  <!-- 14 · סגירה ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">סגירת קנייה</div>
@@ -428,14 +478,35 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">12 · סגירה</div>
+      <div class="idx">14 · סגירה</div>
       <h2>לחיצה אחת, שלושה דברים</h2>
       <p>סימון «נקנה» <b>מכניס את המוצר למזווה</b> באותה לחיצה — בלי הזנה כפולה, שאף אחד לא עושה פעמיים.</p>
       <p>ו«סיום» סוגר את הסל ורושם בתקציב <b>שורה אחת</b>: ₪412 בסופר. לא ארבעים שורות של ₪3.90 — זה תקציב מדויק יותר שאף אחד לא קורא.</p>
     </div>
   </section>
 
-  <!-- 13 ────────────────────────────────────────────────────────────── -->
+  <!-- 15 · בלי קליטה ──────────────────────────────────────────────────── -->
+  <section class="scene" data-dur="10">
+    <div class="phone">
+      <div class="head">רשימת קניות</div>
+      <div class="sub">1 עוד לא נקנה</div>
+      <div class="body">
+        <div class="row step" style="--i:0"><span style="width:34px;text-align:center;color:var(--red)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v16H4V4ZM7.5 12.2l3 3 6-6.4"/></svg></span><span class="g"><span class="t struck">חלב</span></span><span class="n" style="font-size:18px;opacity:.4">2</span></div>
+        <div class="row step" style="--i:1"><span style="width:34px;text-align:center;color:var(--red)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v16H4V4ZM7.5 12.2l3 3 6-6.4"/></svg></span><span class="g"><span class="t struck">ביצים</span></span><span class="n" style="font-size:18px;opacity:.4">12</span></div>
+        <div class="row pulse" style="--i:2"><span style="width:34px;text-align:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="butt" stroke-linejoin="miter"><path d="M4 4h16v16H4V4Z"/></svg></span><span class="g"><span class="t">לחם</span></span><span class="n" style="font-size:18px">1</span></div>
+        <div class="quiet step" style="--i:3">אין רשת. <span class="n">3</span> פעולות מחכות וישלחו לבד.</div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">15 · בלי קליטה</div>
+      <h2>שופרסל עם שתי מקפצות</h2>
+      <p>המקום שבו האפליקציה הזו באמת נבחנת הוא מרתף חניה עם קליטה גרועה. הסימון <b>לא מחכה לשרת</b>: הוא נראה מיד, ממתין בתור, ונשלח כשהרשת חוזרת. ההודעה שקטה בכוונה — רק פעולה שבאמת נתקעה מקבלת עיפרון אדום.</p>
+      <p>הרשימה עצמה נשמרת על המכשיר ונפתחת גם בלי רשת. <b>הכסף לא</b> — מסך תקציב ששוכב במטמון של טלפון שעובר מיד ליד אינו שווה את זה.</p>
+      <div class="why">לכל פעולה בתור מזהה משלה, כך שסימון שנשלח פעמיים לא ייספר פעמיים. בלי זה חיבור מקוטע היה מכפיל חלב.</div>
+    </div>
+  </section>
+
+  <!-- 16 · התראות ─────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">קאסה</div>
@@ -448,7 +519,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">13 · התראות</div>
+      <div class="idx">16 · התראות</div>
       <h2>פעם ביום, בטלגרם</h2>
       <p>כל בוקר המערכת מרעננת את הרשימה ושולחת סיכום אחד: מה נגמר, מה עומד להתקלקל, ואיזה חשבון מגיע.</p>
       <p>על <b>מה שכבר פג תוקף אין התראה</b> — בשלב הזה כבר אי אפשר לעשות כלום, והמסך מספיק. התראה שאי אפשר לפעול לפיה היא התראה שמלמדת להתעלם.</p>
@@ -456,7 +527,7 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 14 ────────────────────────────────────────────────────────────── -->
+  <!-- 17 · הגדרות ─────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">הגדרות</div>
@@ -466,21 +537,21 @@ svg{display:block;margin:0 auto 2px}
         <div class="row step" style="--i:0"><span class="g"><span class="t">מזומן</span></span><span class="amt">300</span></div>
         <div class="sect step" style="--i:1">מי בבית</div>
         <div class="row step" style="--i:1"><span class="g"><span class="t">ישראל</span></span><span class="label">בעל הבית</span></div>
-        <div class="row step" style="--i:2"><span class="g"><span class="t">נעה</span></span><span class="label">שותפה</span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">נעה</span></span><span class="label">שותף</span></div>
         <div class="sect step" style="--i:3">מסד הנתונים</div>
         <div class="row step" style="--i:3"><span class="g label">מצב הסכימה</span><span>מעודכנת</span></div>
       </div>
     </div>
     <div class="say">
-      <div class="idx">14 · הגדרות</div>
+      <div class="idx">17 · הגדרות</div>
       <h2>חשבונות, אנשים, ומסד</h2>
       <p><b>יתרת חשבון מחושבת</b> — יתרת פתיחה ועוד כל תנועה מאז. אף פעם לא מספר שמור: יתרה שמורה ורשימת תנועות מתפצלות, ואז אי אפשר לסמוך על אף אחת מהן.</p>
-      <p>הנכנס הראשון הופך ל<b>בעל הבית</b>. כל מי שנכנס אחריו ממתין לאישור ורואה מסך המתנה בלבד.</p>
+      <p><b>מי בבית</b> — כל מי שהצטרף, והתפקיד שלו. בעל הבית הוא היחיד שמזמין, והיחיד שמשנה תפקיד אחר כך: «ממתין לאישור» סוגר גישה בלי למחוק אדם מהבית.</p>
       <div class="why">אחרי כל עדכון של המערכת — «הרצת מיגרציה». היא בטוחה לחזור עליה כמה פעמים שרוצים ולא מוחקת נתונים.</div>
     </div>
   </section>
 
-  <!-- 15 ────────────────────────────────────────────────────────────── -->
+  <!-- 18 · העיצוב ─────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="12">
     <div class="phone">
       <div class="head">למה זה נראה ככה</div>
@@ -494,7 +565,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">15 · העיצוב</div>
+      <div class="idx">18 · העיצוב</div>
       <h2>פנקס, לא אפליקציה</h2>
       <p>הפנקס המשורטט של המכולת הוא האב הקדמון הישיר של המערכת הזאת: מזווה, רשימה מתגלגלת ומעטפות תקציב הם כולם צאצאים שלו — והוא היה מותאם בדיוק למשימה שהיא מבצעת, לסרוק טור מספרים ולמצוא את אי־ההתאמה.</p>
       <p><b>ואין ירוק.</b> שחור = ביתרה, אדום = בחריגה — זו החשבונאות עצמה. מצב תקין לא מסומן בכלום, ובדיוק לכן העיפרון האדום אומר משהו כשהוא מופיע.</p>
@@ -527,7 +598,7 @@ svg{display:block;margin:0 auto 2px}
   var playBtn = document.getElementById('play');
   var reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  var at = 0, playing = !reduced, t0 = 0, raf = 0;
+  var at = 0, playing = !reduced, t0 = 0, raf = 0, ended = false;
 
   scenes.forEach(function (_, i) {
     var d = document.createElement('i');
@@ -557,16 +628,51 @@ svg{display:block;margin:0 auto 2px}
   // every pause silently restarted the scene from zero.
   var elapsed = 0;
 
+  function label() {
+    playBtn.textContent = ended ? 'מהתחלה' : (playing ? 'השהיה' : 'נגן');
+  }
+
   function go(i) {
     at = Math.max(0, Math.min(scenes.length - 1, i));
     elapsed = 0;
+    ended = false;
     t0 = performance.now();
     bar.style.width = '0%';
     paint();
+    // A scene always begins at its own beginning. Without this, arriving at
+    // scene 9 halfway down the page means the top of it — the screen it is
+    // about — is above the fold and never seen.
+    scrollTo(0, 0);
     // Force a reflow so the entry animations replay: the class is already on,
     // and without this a second visit to a scene would render it static.
     void scenes[at].offsetWidth;
   }
+
+  /**
+   * The film waits for the reader.
+   *
+   * On a phone every scene is taller than the screen, so reading one means
+   * scrolling — and a clock that keeps running while somebody is halfway down
+   * swaps the text out from under them, then drops them into the middle of a
+   * scene whose beginning they never saw. Measured at 390×844: all eighteen
+   * scenes overflow, so this is the normal case on a phone, not an edge one.
+   *
+   * So scrolling away from the top stops the clock, and coming back to the top
+   * starts it again. Nothing is hidden: the button says «נגן» the whole time,
+   * and a deliberate tap on it overrides this until the next scroll.
+   */
+  var waiting = false;
+  var atTop = function () { return (scrollY || document.documentElement.scrollTop || 0) <= 8; };
+
+  addEventListener('scroll', function () {
+    if (atTop()) {
+      if (!waiting) return;
+      waiting = false; playing = true; t0 = performance.now() - elapsed; label();
+      return;
+    }
+    if (!playing) return;
+    playing = false; waiting = true; label();
+  }, { passive: true });
 
   function tick(now) {
     raf = requestAnimationFrame(tick);
@@ -575,15 +681,18 @@ svg{display:block;margin:0 auto 2px}
     var progress = Math.min(1, elapsed / duration());
     bar.style.width = (progress * 100) + '%';
     if (progress >= 1) {
-      if (at === scenes.length - 1) { playing = false; playBtn.textContent = 'מהתחלה'; }
+      if (at === scenes.length - 1) { playing = false; ended = true; label(); }
       else go(at + 1);
     }
   }
 
   playBtn.onclick = function () {
-    if (at === scenes.length - 1 && !playing) { go(0); playing = true; }
+    if (ended) { go(0); playing = true; }
     else playing = !playing;
-    playBtn.textContent = playing ? 'השהיה' : 'נגן';
+    // A tap is a decision, and it outranks where the page happens to be
+    // scrolled: the reader gets what they asked for until they scroll again.
+    waiting = false;
+    label();
     t0 = performance.now() - elapsed;
   };
   document.getElementById('next').onclick = function () { go(at + 1); };
@@ -597,7 +706,7 @@ svg{display:block;margin:0 auto 2px}
   });
 
   go(0);
-  playBtn.textContent = playing ? 'השהיה' : 'נגן';
+  label();
   raf = requestAnimationFrame(tick);
 })();
 </script>
