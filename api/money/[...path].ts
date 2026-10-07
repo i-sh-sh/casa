@@ -5,6 +5,7 @@ import { badRequest, conflict, notFound } from '../_lib/http.js';
 import { bool, date, int, num, oneOf, optionalDate, optionalInt, optionalNum, optionalStr, str } from '../_lib/validate.js';
 import { advanceDue, buildBudgetMonth, computeBalance, monthKey } from '../../shared/money.js';
 import type { Account, Category, Transaction } from '../../shared/types.js';
+import { downloadWorkbook, importWorkbook } from './_workbook.js';
 
 const ACCOUNT_KINDS = ['bank', 'cash', 'credit', 'savings'] as const;
 const CATEGORY_KINDS = ['spending', 'income', 'saving'] as const;
@@ -432,6 +433,11 @@ export default router([
 
   { method: 'GET', path: 'budget', role: 'viewer', handle: getBudget },
   { method: 'PUT', path: 'budget/:categoryId', handle: setAllocation },
+
+  // The household's Excel template, both ways. Viewer for the download, as
+  // with every export: someone who can read every number may take them.
+  { method: 'GET', path: 'workbook', role: 'viewer', handle: downloadWorkbook },
+  { method: 'POST', path: 'workbook/import', handle: importWorkbook },
 
   { method: 'GET', path: 'transactions', role: 'viewer', handle: listTransactions },
   { method: 'POST', path: 'transactions', handle: createTransaction },

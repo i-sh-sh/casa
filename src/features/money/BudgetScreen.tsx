@@ -172,6 +172,12 @@ export function BudgetScreen() {
             })}
           </>
         )}
+
+        {/* At the foot, with the other things done once a month rather than
+            at the till. */}
+        <Link to="/budget/excel" className="btn btn-block" style={{ marginTop: 'var(--gap-over)' }}>
+          ייבוא וייצוא לאקסל
+        </Link>
       </div>
 
       {editing && (
