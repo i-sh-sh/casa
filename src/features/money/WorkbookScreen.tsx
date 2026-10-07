@@ -226,6 +226,16 @@ function Preview({ summary, sources }: { summary: ImportSummary; sources: string
     detail: summary.transactions && summary.account_name
       ? <>בסך <span className="n">{formatILS(-summary.transactions_total)}</span>, לחשבון {summary.account_name}</> : undefined,
   });
+  if (summary.by_payee) {
+    lines.push({
+      label: 'שויכו לפי בית העסק',
+      value: `${summary.by_payee} עסקאות`,
+      detail: 'לא היה להן סעיף בקובץ, והן נרשמו לסעיף שבו בית העסק נרשם בפעם הקודמת.',
+    });
+  }
+  if (summary.installments) {
+    lines.push({ label: 'בתשלומים', value: `${summary.installments} עסקאות`, detail: 'ייספרו ב«כבר מחויב לחודשים הבאים» בתקציב.' });
+  }
   if (summary.adjustments.length) {
     lines.push({
       label: 'השלמות מ«בפועל»',

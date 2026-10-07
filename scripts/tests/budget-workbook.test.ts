@@ -134,7 +134,10 @@ test('the household file is read by its headers, not by cell addresses', async (
 
   // Spends arrive in the app's sign: negative is money out.
   assert.equal(parsed.transactions.length, 4);
-  assert.deepEqual(parsed.transactions[0], { date: '2026-09-14', payee: 'רמי לוי גוש עציון', amount: -158.26, line: 'מזון', note: null });
+  assert.deepEqual(parsed.transactions[0], {
+    date: '2026-09-14', payee: 'רמי לוי גוש עציון', amount: -158.26, line: 'מזון', note: null,
+    installment_no: null, installments_total: null, charged_on: '2026-10-15',
+  });
 });
 
 test('an import into an empty home creates the structure, the budget and the month', async () => {
@@ -319,4 +322,51 @@ test('an exported month imports back as itself — nothing new, nothing changed'
   // here, unfiled, and stays that way.
   assert.deepEqual(plan.newCategories, []);
   assert.deepEqual(plan.adjustments, []);
+});
+
+// ── Installments and payee rules ─────────────────────────────────────────
+
+test('an installment is read from the card sheet, with its billing date', async () => {
+  const parsed = parseBudgetWorkbook(await read(householdFile()));
+  const sunny = parsed.transactions.find((t) => t.payee === 'סאני תקשורת')!;
+  assert.equal(sunny.installment_no, 2);
+  assert.equal(sunny.installments_total, 3);
+  assert.equal(sunny.charged_on, '2026-10-15');
+  // An ordinary purchase whose note happens to hold «2/3» is not one.
+  assert.equal(parsed.transactions.find((t) => t.payee === 'רמי לוי גוש עציון')!.installment_no, null);
+});
+
+test('a row with no «סעיף» is filed where this payee was filed last time', async () => {
+  const parsed = parseBudgetWorkbook(await read(householdFile()));
+  const plan = planImport({
+    parsed, month: '2026-09-01',
+    categories: [{ id: 9, name: 'מתנות', group_name: 'אישי', kind: 'spending', commitment: 'liquid' }],
+    groups: ['אישי'], allocations: [], transactions: [],
+    rules: [{ payee_key: 'פרחי הארץ', category_id: 9 }],
+  });
+  const flowers = plan.transactions.find((t) => t.payee === 'פרחי הארץ')!;
+  assert.deepEqual(flowers.category, { id: 9 });
+  assert.equal(plan.byPayee, 1);
+  assert.deepEqual(plan.unmatched, [], 'a row the rules filed is not reported as unfiled');
+});
+
+test('a rule pointing at an archived category files nothing', async () => {
+  const parsed = parseBudgetWorkbook(await read(householdFile()));
+  const plan = planImport({
+    parsed, month: '2026-09-01', categories: [], groups: [], allocations: [], transactions: [],
+    rules: [{ payee_key: 'פרחי הארץ', category_id: 9 }],
+  });
+  assert.equal(plan.transactions.find((t) => t.payee === 'פרחי הארץ')!.category, null);
+});
+
+test('installments go out with «תשלומים» and come back as installments', async () => {
+  const data: WorkbookData = {
+    ...month,
+    transactions: [{ occurred_on: '2026-09-01', payee: 'סאני תקשורת', amount: -211.33, category_name: null, account_name: 'אשראי', note: null, installment_no: 2, installments_total: 3, charged_on: '2026-10-15' }],
+  };
+  const parsed = parseBudgetWorkbook(await read(buildBudgetWorkbook(data)));
+  const t = parsed.transactions[0]!;
+  assert.equal(t.installment_no, 2);
+  assert.equal(t.installments_total, 3);
+  assert.equal(t.charged_on, '2026-10-15');
 });

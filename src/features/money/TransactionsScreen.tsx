@@ -6,6 +6,7 @@ import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, use
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS, monthKey } from '@shared/money.js';
+import { nameKey } from '@shared/budget-workbook.js';
 import type { Account, Category, Transaction } from '@shared/types.js';
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
@@ -95,6 +96,7 @@ export function TransactionsScreen() {
                       <span className="title" style={{ display: 'block' }}>{t.payee || t.category_name || 'ללא שם'}</span>
                       <span className="meta">
                         {t.category_name ?? 'לא משויך'} · {t.account_name}
+                        {t.installment_no && <> · תשלום <span className="n">{t.installment_no}/{t.installments_total}</span></>}
                         {t.paid_by && <> · שילם {t.paid_by.split('@')[0]}</>}
                       </span>
                     </span>
@@ -167,6 +169,7 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
   const { user, members } = useSession();
   const accounts = useAsync(() => api.get<Account[]>('/money/accounts'));
   const categories = useAsync(() => api.get<Category[]>('/money/categories'));
+  const rules = useAsync(() => api.get<{ payee_key: string; category_id: number }[]>('/money/payee-rules'));
 
   const editing = transaction !== null;
   const [kind, setKind] = useState<'spend' | 'income'>(
@@ -178,6 +181,22 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
   const [categoryId, setCategoryId] = useState(transaction?.category_id ? String(transaction.category_id) : '');
   const [occurredOn, setOccurredOn] = useState(transaction?.occurred_on ?? todayISO());
   const [paidBy, setPaidBy] = useState(transaction?.paid_by ?? user?.email ?? '');
+  const [installmentNo, setInstallmentNo] = useState(transaction?.installment_no ? String(transaction.installment_no) : '');
+  const [installmentsTotal, setInstallmentsTotal] = useState(transaction?.installments_total ? String(transaction.installments_total) : '');
+  // Set when the category was filled from an earlier decision about this
+  // payee, and cleared the moment the person picks one themselves — so the
+  // note under the field is only ever true.
+  const [suggested, setSuggested] = useState(false);
+
+  const changePayee = (value: string) => {
+    setPayee(value);
+    if (categoryId && !suggested) return;
+    const learned = (rules.data ?? []).find((r) => r.payee_key === nameKey(value));
+    const fits = learned && (categories.data ?? []).some((c) => c.id === learned.category_id
+      && !c.archived_at && (kind === 'income' ? c.kind === 'income' : c.kind !== 'income'));
+    if (fits) { setCategoryId(String(learned.category_id)); setSuggested(true); }
+    else if (suggested) { setCategoryId(''); setSuggested(false); }
+  };
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -219,6 +238,8 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
             // Preserved rather than defaulted: PATCH replaces the row, and a
             // personal expense corrected for a typo must not become shared.
             split: transaction?.split ?? 'shared',
+            installment_no: kind === 'spend' && installmentNo && installmentsTotal ? Number(installmentNo) : null,
+            installments_total: kind === 'spend' && installmentNo && installmentsTotal ? Number(installmentsTotal) : null,
           };
           if (editing) {
             await api.patch(`/money/transactions/${transaction.id}`, body);
@@ -233,7 +254,7 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
           <input className="input" type="number" inputMode="decimal" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus placeholder="0" style={{ fontSize: 24 }} />
         </Field>
         <Field label={kind === 'income' ? 'ממי' : 'למי'}>
-          <input className="input" value={payee} onChange={(e) => setPayee(e.target.value)} placeholder={kind === 'income' ? 'משכורת' : 'שופרסל'} />
+          <input className="input" value={payee} onChange={(e) => changePayee(e.target.value)} placeholder={kind === 'income' ? 'משכורת' : 'שופרסל'} />
         </Field>
         <div className="row-2">
           <Field label="חשבון">
@@ -242,12 +263,29 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
             </select>
           </Field>
           <Field label="קטגוריה">
-            <select className="select" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+            <select className="select" value={categoryId} onChange={(e) => { setCategoryId(e.target.value); setSuggested(false); }}>
               <option value="">ללא</option>
               {usable.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
         </div>
+        {suggested && (
+          <p className="meta" style={{ marginTop: 'calc(-1 * var(--s3))', marginBottom: 'var(--s3)' }}>
+            הקטגוריה לפי הפעם הקודמת ש«{payee.trim()}» נרשם. אפשר לשנות.
+          </p>
+        )}
+        {/* A purchase in installments is one row per charge. Which one this
+            is, of how many, is what lets the budget say what is still owed. */}
+        {kind === 'spend' && (
+          <div className="row-2">
+            <Field label="תשלום מספר">
+              <input className="input" type="number" inputMode="numeric" min="1" value={installmentNo} onChange={(e) => setInstallmentNo(e.target.value)} placeholder="—" />
+            </Field>
+            <Field label="מתוך">
+              <input className="input" type="number" inputMode="numeric" min="2" value={installmentsTotal} onChange={(e) => setInstallmentsTotal(e.target.value)} placeholder="—" />
+            </Field>
+          </div>
+        )}
         <div className="row-2">
           <Field label="תאריך">
             <input className="input" type="date" value={occurredOn} onChange={(e) => setOccurredOn(e.target.value)} />

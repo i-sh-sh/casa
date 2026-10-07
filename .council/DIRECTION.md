@@ -19,7 +19,7 @@
 שפת העיצוב ב-docs/DESIGN.md. כיוון חוויית הכסף: [0001](decisions/0001-excel-and-budget-model.md).
 
 ## Accepted decisions
-- (אין עדיין — 0001 הוצעה)
+- [0001](decisions/0001-excel-and-budget-model.md) — קאסה מקור האמת, האקסל תצוגה ושער כניסה; מיפוי בית עסק ותשלומים אושרו
 
 ## Not now
 - מסך שנתי באפליקציה, חובות וחסכונות, ייבוא ישיר מחברת האשראי ([0001](decisions/0001-excel-and-budget-model.md))

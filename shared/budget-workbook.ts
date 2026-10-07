@@ -149,7 +149,10 @@ export interface WorkbookData {
    */
   actuals: { month: string; category_id: number | null; incoming: boolean; amount: number }[];
   /** The month's transactions, transfers excluded. */
-  transactions: { occurred_on: string; payee: string; amount: number; category_name: string | null; account_name: string; note: string | null }[];
+  transactions: {
+    occurred_on: string; payee: string; amount: number; category_name: string | null; account_name: string; note: string | null;
+    installment_no?: number | null; installments_total?: number | null; charged_on?: string | null;
+  }[];
   /** Every account's balance on the first day of the year. */
   opening_balance: number;
 }
@@ -502,7 +505,15 @@ function transactionsSheet(data: WorkbookData): WriteSheet {
     // The template's sign: a charge is positive. Ours is the other way round,
     // and this is the one place the two meet on the way out.
     put(s, 'E', row, { value: cents(-t.amount), style: S.agorot });
-    put(s, 'G', row, t.note);
+    if (t.installment_no && t.installments_total) {
+      put(s, 'D', row, 'תשלומים');
+      // The words the card statement uses, so the note reads back the same.
+      const words = `תשלום ${t.installment_no} מתוך ${t.installments_total}`;
+      put(s, 'G', row, t.note?.includes(words) ? t.note : [words, t.note].filter(Boolean).join(' · '));
+    } else {
+      put(s, 'G', row, t.note);
+    }
+    if (t.charged_on) put(s, 'F', row, { value: dateToSerial(t.charged_on), style: S.date });
     put(s, 'H', row, t.account_name);
     put(s, 'I', row, t.category_name);
     row++;
@@ -550,6 +561,23 @@ export interface ParsedTransaction {
   amount: number;
   line: string | null;
   note: string | null;
+  installment_no?: number | null;
+  installments_total?: number | null;
+  /** The card's billing date, when the sheet has one. */
+  charged_on?: string | null;
+}
+
+/** «תשלום 2 מתוך 3», «2/3», «תשלום 2 מ-3» → [2, 3]. */
+export function installmentOf(text: unknown): [number, number] | null {
+  const t = normalizeName(text);
+  const m = /(\d+)\s*(?:מתוך|מ-|\/)\s*(\d+)/.exec(t);
+  if (!m) return null;
+  const no = Number(m[1]);
+  const total = Number(m[2]);
+  if (!(no >= 1 && total >= 2 && no <= total && total <= 120)) return null;
+  // «2/3» alone could be a date. Without the word, only trust it when the row
+  // already says it is an installment (the caller passes the type column too).
+  return [no, total];
 }
 
 export interface ParsedBudget {
@@ -718,6 +746,8 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
       let dateCol = findCol(g, r, (t) => t.includes('תאריך עסקה'));
       if (dateCol < 0) dateCol = findCol(g, r, (t) => t.startsWith('תאריך'));
       const noteCol = findCol(g, r, (t) => t === 'הערות');
+      const typeCol = findCol(g, r, (t) => t.includes('סוג עסקה'));
+      const chargedCol = findCol(g, r, (t) => t.includes('תאריך חיוב'));
 
       out.sources.push(name.trim());
       if (!out.month) {
@@ -734,7 +764,14 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
         if (!date) { skipped++; continue; }
         const note = noteCol >= 0 ? g.text(noteCol, row) : '';
         const line = g.text(lineCol, row);
-        out.transactions.push({ date, payee, amount: -amount, line: line || null, note: note || null });
+        const type = typeCol >= 0 ? g.text(typeCol, row) : '';
+        const installment = /תשלום/.test(note) || type.includes('תשלומים') ? installmentOf(note) : null;
+        out.transactions.push({
+          date, payee, amount: -amount, line: line || null, note: note || null,
+          installment_no: installment?.[0] ?? null,
+          installments_total: installment?.[1] ?? null,
+          charged_on: chargedCol >= 0 ? dateOf(g.get(chargedCol, row)) : null,
+        });
       }
       if (skipped) out.warnings.push(`בגיליון «${name.trim()}» ${skipped} שורות בלי תאריך שאפשר לקרוא — דולגו.`);
       break;
@@ -779,8 +816,13 @@ export interface ImportPlan {
   commitments: { id: number; commitment: Commitment }[];
   allocations: { category: CategoryRef; name: string; allocated: number; note: string | null }[];
   unchangedAllocations: number;
-  transactions: { category: CategoryRef | null; occurred_on: string; amount: number; payee: string; note: string | null }[];
+  transactions: {
+    category: CategoryRef | null; occurred_on: string; amount: number; payee: string; note: string | null;
+    installment_no: number | null; installments_total: number | null; charged_on: string | null;
+  }[];
   duplicates: number;
+  /** Rows with no «סעיף» of their own, filed by an earlier decision about the same payee. */
+  byPayee: number;
   /** One per line whose «בפועל» differs from its transactions. Replaces any earlier one. */
   adjustments: { category: CategoryRef; name: string; amount: number }[];
   /** Earlier adjustment rows that no longer match the file, to soft-delete. */
@@ -808,11 +850,15 @@ export function planImport(params: {
   groups: string[];
   allocations: { category_id: number; allocated: number; note: string | null }[];
   transactions: ExistingTransaction[];
+  /** payee_rules: which category this household filed each payee under. */
+  rules?: { payee_key: string; category_id: number }[];
 }): ImportPlan {
   const { parsed, month, categories, groups, allocations, transactions } = params;
+  const rules = new Map((params.rules ?? []).map((r) => [r.payee_key, r.category_id]));
+  const live = new Set(categories.map((c) => c.id));
   const plan: ImportPlan = {
     month, newGroups: [], newCategories: [], commitments: [], allocations: [], unchangedAllocations: 0,
-    transactions: [], duplicates: 0, adjustments: [], retire: [], unmatched: [], warnings: [...parsed.warnings],
+    transactions: [], duplicates: 0, byPayee: 0, adjustments: [], retire: [], unmatched: [], warnings: [...parsed.warnings],
   };
   const monthEnd = addMonths(month, 1);
   const inMonth = (d: string) => d >= month && d < monthEnd;
@@ -883,7 +929,12 @@ export function planImport(params: {
     // part of «בפועל», not a purchase, and the gap below reproduces it.
     if (normalizeName(t.payee) === ADJUSTMENT_PAYEE) continue;
     const lineKey = t.line ? nameKey(t.line) : null;
-    const ref = lineKey ? byLine.get(lineKey) ?? byCategory.get(lineKey) ?? null : null;
+    let ref = lineKey ? byLine.get(lineKey) ?? byCategory.get(lineKey) ?? null : null;
+    let ruled = false;
+    if (!ref) {
+      const learned = rules.get(nameKey(t.payee));
+      if (learned != null && live.has(learned)) { ref = { id: learned }; ruled = true; }
+    }
     if (lineKey && !ref && !plan.unmatched.includes(t.line!)) plan.unmatched.push(t.line!);
     if (lineKey && byLine.has(lineKey)) fileSums.set(lineKey, cents((fileSums.get(lineKey) ?? 0) + t.amount));
 
@@ -900,7 +951,13 @@ export function planImport(params: {
       plan.duplicates++;
       continue;
     }
-    plan.transactions.push({ category: ref, occurred_on, amount: t.amount, payee: t.payee || 'ללא שם', note });
+    if (ruled) plan.byPayee++;
+    plan.transactions.push({
+      category: ref, occurred_on, amount: t.amount, payee: t.payee || 'ללא שם', note,
+      installment_no: t.installment_no ?? null,
+      installments_total: t.installment_no ? t.installments_total ?? null : null,
+      charged_on: t.charged_on ?? null,
+    });
   }
 
   // The gap between «בפועל» and the line's transactions, as one row per line.
@@ -940,6 +997,8 @@ export interface ImportSummary {
   transactions: number;
   transactions_total: number;
   duplicates: number;
+  by_payee: number;
+  installments: number;
   adjustments: { name: string; amount: number }[];
   retire: number;
   unmatched: string[];
@@ -960,6 +1019,8 @@ export function summarizePlan(plan: ImportPlan, accountName: string | null, appl
     transactions: plan.transactions.length,
     transactions_total: cents(plan.transactions.reduce((s, t) => s + t.amount, 0)),
     duplicates: plan.duplicates,
+    by_payee: plan.byPayee,
+    installments: plan.transactions.filter((t) => t.installment_no).length,
     adjustments: plan.adjustments.map((a) => ({ name: a.name, amount: a.amount })),
     retire: plan.retire.length,
     unmatched: plan.unmatched,

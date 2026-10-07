@@ -129,5 +129,5 @@ export function findSheet(name: string): Sheet | undefined {
 /** The tables the full backup keeps verbatim, for restoring rather than reading. */
 export const BACKUP_TABLES = [
   'accounts', 'category_groups', 'categories', 'budget_allocations', 'transactions',
-  'recurring_bills', 'settlements', 'products', 'stock_entries', 'stock_log', 'shopping_items',
+  'recurring_bills', 'settlements', 'products', 'stock_entries', 'stock_log', 'shopping_items', 'payee_rules',
 ] as const;

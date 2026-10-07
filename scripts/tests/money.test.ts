@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  advanceDue, buildBudgetMonth, cashFlow, computeBalance,
+  advanceDue, buildBudgetMonth, cashFlow, computeBalance, futureCommitments,
   formatILS, monthKey, nextMonth, previousMonth, round2,
 } from '../../shared/money.ts';
 import type { Category } from '../../shared/types.ts';
@@ -342,4 +342,28 @@ test('agorot are suppressed unless the exact figure is the point', () => {
 test('the symbol can be dropped, because a column head carries it once', () => {
   assert.equal(formatILS(1234, { symbol: false }), '1,234');
   assert.equal(formatILS(-1234, { symbol: false }), '−1,234');
+});
+
+// ── Installments ─────────────────────────────────────────────────────────
+
+test('installments still to come are the count the statement printed, times the charge', () => {
+  const ahead = futureCommitments([
+    { occurred_on: '2026-09-01', payee: 'סאני תקשורת', category_name: 'סלולר', amount: -211.33, installment_no: 2, installments_total: 3 },
+    { occurred_on: '2026-08-01', payee: 'סאני תקשורת', category_name: 'סלולר', amount: -211.33, installment_no: 1, installments_total: 3 },
+    { occurred_on: '2026-09-10', payee: 'ריהוט', category_name: null, amount: -100, installment_no: 4, installments_total: 4 },
+  ], '2026-09-01');
+  assert.equal(ahead.series.length, 1, 'a series on its last installment owes nothing');
+  assert.equal(ahead.series[0]!.remaining, 1);
+  assert.equal(ahead.total, 211.33);
+  assert.equal(ahead.next_month, 211.33);
+});
+
+test('a series whose charges stopped arriving is not still owed', () => {
+  // The last recorded installment is from June. Either it was cancelled or the
+  // statements stopped being imported — and neither is a debt to show.
+  const ahead = futureCommitments([
+    { occurred_on: '2026-06-01', payee: 'מקרר', category_name: null, amount: -500, installment_no: 2, installments_total: 12 },
+  ], '2026-09-01');
+  assert.deepEqual(ahead.series, []);
+  assert.equal(ahead.total, 0);
 });

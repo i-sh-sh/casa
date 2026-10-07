@@ -1,7 +1,8 @@
 import type { Ctx } from '../_lib/router.js';
 import { query } from '../_lib/db.js';
 import { badRequest } from '../_lib/http.js';
-import { date, num, oneOf, optionalInt, optionalStr, str } from '../_lib/validate.js';
+import { date, num, oneOf, optionalDate, optionalInt, optionalStr, str } from '../_lib/validate.js';
+import { learnPayee } from './_payees.js';
 import { monthKey } from '../../shared/money.js';
 import { writeXlsx } from '../../shared/xlsx.js';
 import {
@@ -56,7 +57,8 @@ async function workbookData(month: string): Promise<WorkbookData> {
     ),
     query<WorkbookData['transactions'][number]>(
       `SELECT to_char(t.occurred_on, 'YYYY-MM-DD') AS occurred_on, t.payee, t.amount,
-              c.name AS category_name, a.name AS account_name, t.note
+              c.name AS category_name, a.name AS account_name, t.note,
+              t.installment_no, t.installments_total, to_char(t.charged_on, 'YYYY-MM-DD') AS charged_on
          FROM transactions t
          JOIN accounts a ON a.id = t.account_id
          LEFT JOIN categories c ON c.id = t.category_id
@@ -128,12 +130,18 @@ function readParsed(body: unknown): ParsedBudget {
       const t = (raw ?? {}) as Record<string, unknown>;
       const amount = num(t['amount'], 'סכום', { min: -1_000_000, max: 1_000_000 });
       if (amount === 0) throw badRequest('עסקה בסכום 0');
+      const no = optionalInt(t['installment_no'], 'מספר תשלום');
+      const total = optionalInt(t['installments_total'], 'מספר תשלומים');
+      const installment = no != null && total != null && no >= 1 && total >= 2 && no <= total;
       return {
         date: date(t['date'], 'תאריך'),
         payee: optionalStr(t['payee'], 'בית עסק', 120) ?? '',
         amount,
         line: optionalStr(t['line'], 'סעיף', 80),
         note: optionalStr(t['note'], 'הערה', 1000),
+        installment_no: installment ? no : null,
+        installments_total: installment ? total : null,
+        charged_on: optionalDate(t['charged_on'], 'תאריך חיוב'),
       };
     }),
     sources: [],
@@ -142,7 +150,7 @@ function readParsed(body: unknown): ParsedBudget {
 }
 
 async function planFor(parsed: ParsedBudget, month: string): Promise<ImportPlan> {
-  const [categories, groups, allocations, transactions] = await Promise.all([
+  const [categories, groups, allocations, transactions, rules] = await Promise.all([
     query<ExistingCategory>(
       `SELECT c.id, c.name, g.name AS group_name, c.kind, c.commitment
          FROM categories c LEFT JOIN category_groups g ON g.id = c.group_id
@@ -161,8 +169,9 @@ async function planFor(parsed: ParsedBudget, month: string): Promise<ImportPlan>
           AND occurred_on >= $1::date AND occurred_on < ($1::date + INTERVAL '1 month')`,
       [month],
     ),
+    query<{ payee_key: string; category_id: number }>(`SELECT payee_key, category_id FROM payee_rules`),
   ]);
-  return planImport({ parsed, month, categories, groups: groups.map((g) => g.name), allocations, transactions });
+  return planImport({ parsed, month, categories, groups: groups.map((g) => g.name), allocations, transactions, rules });
 }
 
 /**
@@ -251,11 +260,17 @@ export async function importWorkbook(ctx: Ctx): Promise<ImportSummary> {
   }
 
   for (const t of plan.transactions) {
+    const categoryId = t.category ? idOf(t.category) : null;
     await query(
-      `INSERT INTO transactions (occurred_on, account_id, category_id, amount, payee, note, paid_by, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-      [t.occurred_on, account!.id, t.category ? idOf(t.category) : null, t.amount, t.payee, t.note, ctx.user.email],
+      `INSERT INTO transactions (occurred_on, account_id, category_id, amount, payee, note, paid_by, created_by,
+                                 installment_no, installments_total, charged_on)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10)`,
+      [t.occurred_on, account!.id, categoryId, t.amount, t.payee, t.note, ctx.user.email,
+        t.installment_no, t.installments_total, t.charged_on],
     );
+    // The «סעיף» column of the file is exactly the decision payee_rules
+    // remembers — importing it is the cheapest way the rules ever get taught.
+    await learnPayee(t.payee, categoryId);
   }
 
   // Soft delete, as everywhere money lives: an adjustment that a later file
