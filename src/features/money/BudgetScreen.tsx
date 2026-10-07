@@ -118,6 +118,8 @@ export function BudgetScreen() {
               </section>
             )}
 
+            <Ahead data={data} />
+
             {data.envelopes.length === 0 && (
               <Empty
                 headline="אין עדיין קטגוריות"
@@ -172,6 +174,12 @@ export function BudgetScreen() {
             })}
           </>
         )}
+
+        {/* At the foot, with the other things done once a month rather than
+            at the till. */}
+        <Link to="/budget/excel" className="btn btn-block" style={{ marginTop: 'var(--gap-over)' }}>
+          ייבוא וייצוא לאקסל
+        </Link>
       </div>
 
       {editing && (
@@ -248,6 +256,44 @@ function Ladder({ data }: { data: BudgetMonth }) {
           </div>
         </div>
       )}
+    </section>
+  );
+}
+
+/**
+ * What installment purchases have already spent of the months to come.
+ *
+ * Every figure is a recorded installment and a count the card statement
+ * printed — «2 מתוך 3» leaves one. Nothing appears until a row says it is an
+ * installment, so a household that never splits a purchase never sees this.
+ */
+function Ahead({ data }: { data: BudgetMonth }) {
+  const ahead = data.ahead;
+  if (!ahead || ahead.series.length === 0) return null;
+  return (
+    <section className="section">
+      <h2>כבר מחויב לחודשים הבאים <span className="count">· ₪</span></h2>
+      <div className="rows">
+        {ahead.series.map((s) => (
+          <div className="row" key={`${s.payee}|${s.per_month}|${s.installments_total}`}>
+            <span className="grow">
+              <span className="title" style={{ display: 'block' }}>{s.payee}</span>
+              <span className="meta">
+                נשארו <span className="n">{s.remaining}</span> מתוך <span className="n">{s.installments_total}</span>
+                {' · '}<span className="n">{formatILS(s.per_month, { symbol: false })}</span> לחודש
+                {s.category_name && <> · {s.category_name}</>}
+              </span>
+            </span>
+            <span className="n amount">{formatILS(s.remaining_total, { symbol: false })}</span>
+          </div>
+        ))}
+      </div>
+      <hr className="rule-2" />
+      <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
+        <span className="margin-col" />
+        <span className="grow label">סך הכול עוד לחייב</span>
+        <span className="n amount">{formatILS(ahead.total, { symbol: false })}</span>
+      </div>
     </section>
   );
 }

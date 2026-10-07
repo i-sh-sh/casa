@@ -6,6 +6,7 @@ import { OutboxProvider } from '../lib/outbox.js';
 import { Icon, type IconName } from '../ui/Icon.js';
 import { HomeScreen } from '../features/home/HomeScreen.js';
 import { BudgetScreen } from '../features/money/BudgetScreen.js';
+import { WorkbookScreen } from '../features/money/WorkbookScreen.js';
 import { TransactionsScreen } from '../features/money/TransactionsScreen.js';
 import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
@@ -45,6 +46,7 @@ function Screen() {
   if (path === '/') return <HomeScreen />;
   if (path.startsWith('/shopping')) return <ShoppingScreen />;
   if (path.startsWith('/pantry')) return <PantryScreen />;
+  if (path.startsWith('/budget/excel')) return <WorkbookScreen />;
   if (path.startsWith('/budget')) return <BudgetScreen />;
   if (path.startsWith('/transactions')) return <TransactionsScreen />;
   if (path.startsWith('/settings')) return <SettingsScreen />;

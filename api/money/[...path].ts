@@ -3,8 +3,10 @@ import { router, type Ctx } from '../_lib/router.js';
 import { query, one, transaction } from '../_lib/db.js';
 import { badRequest, conflict, notFound } from '../_lib/http.js';
 import { bool, date, int, num, oneOf, optionalDate, optionalInt, optionalNum, optionalStr, str } from '../_lib/validate.js';
-import { advanceDue, buildBudgetMonth, computeBalance, monthKey } from '../../shared/money.js';
+import { advanceDue, buildBudgetMonth, computeBalance, futureCommitments, monthKey, previousMonth, type InstallmentInput } from '../../shared/money.js';
 import type { Account, Category, Transaction } from '../../shared/types.js';
+import { downloadWorkbook, importWorkbook } from './_workbook.js';
+import { learnPayee } from './_payees.js';
 
 const ACCOUNT_KINDS = ['bank', 'cash', 'credit', 'savings'] as const;
 const CATEGORY_KINDS = ['spending', 'income', 'saving'] as const;
@@ -103,8 +105,20 @@ async function budgetInputs(month: string) {
 
 async function getBudget(ctx: Ctx) {
   const month = monthKey(ctx.query['month'] || new Date());
-  const { categories, allocations, spends } = await budgetInputs(month);
-  return buildBudgetMonth({ month, categories, allocations, spends });
+  const [{ categories, allocations, spends }, installments] = await Promise.all([
+    budgetInputs(month),
+    // This month and the one before: a series is still owed only if one of
+    // its installments arrived recently (see futureCommitments).
+    query<InstallmentInput>(
+      `SELECT to_char(t.occurred_on, 'YYYY-MM-DD') AS occurred_on, t.payee, c.name AS category_name,
+              t.amount, t.installment_no, t.installments_total
+         FROM transactions t LEFT JOIN categories c ON c.id = t.category_id
+        WHERE t.deleted_at IS NULL AND t.installment_no IS NOT NULL
+          AND t.occurred_on >= $1::date AND t.occurred_on < ($2::date + INTERVAL '1 month')`,
+      [previousMonth(month), month],
+    ),
+  ]);
+  return { ...buildBudgetMonth({ month, categories, allocations, spends }), ahead: futureCommitments(installments, month) };
 }
 
 /** Put money in one envelope for one month. Idempotent — it sets, never adds. */
@@ -131,6 +145,7 @@ const TX_SELECT = `
          t.account_id, a.name AS account_name,
          t.category_id, c.name AS category_name,
          t.amount, t.payee, t.note, t.paid_by, t.split, t.transfer_id,
+         t.installment_no, t.installments_total,
          t.created_by, t.created_at
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
@@ -173,7 +188,17 @@ function readTxBody(ctx: Ctx) {
   const { body } = ctx;
   const amount = num(body['amount'], 'סכום', { min: -1_000_000, max: 1_000_000 });
   if (amount === 0) throw badRequest('סכום 0 אינו תנועה');
+  const installmentNo = optionalInt(body['installment_no'], 'מספר תשלום');
+  const installmentsTotal = optionalInt(body['installments_total'], 'מספר תשלומים');
+  if ((installmentNo == null) !== (installmentsTotal == null)) {
+    throw badRequest('תשלומים: צריך גם את מספר התשלום וגם מתוך כמה');
+  }
+  if (installmentNo != null && !(installmentNo >= 1 && installmentsTotal! >= 2 && installmentNo <= installmentsTotal!)) {
+    throw badRequest('תשלום חייב להיות בין 1 למספר התשלומים, ומספר התשלומים לפחות 2');
+  }
   return {
+    installment_no: installmentNo,
+    installments_total: installmentsTotal,
     occurred_on: date(body['occurred_on'] ?? new Date().toISOString().slice(0, 10), 'תאריך'),
     account_id: int(body['account_id'], 'חשבון'),
     category_id: optionalInt(body['category_id'], 'קטגוריה'),
@@ -188,11 +213,14 @@ function readTxBody(ctx: Ctx) {
 async function createTransaction(ctx: Ctx): Promise<Transaction | null> {
   const t = readTxBody(ctx);
   const created = await one<{ id: number }>(
-    `INSERT INTO transactions (occurred_on, account_id, category_id, amount, payee, note, paid_by, split, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
-    [t.occurred_on, t.account_id, t.category_id, t.amount, t.payee, t.note, t.paid_by, t.split, ctx.user.email],
+    `INSERT INTO transactions (occurred_on, account_id, category_id, amount, payee, note, paid_by, split,
+                               installment_no, installments_total, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+    [t.occurred_on, t.account_id, t.category_id, t.amount, t.payee, t.note, t.paid_by, t.split,
+      t.installment_no, t.installments_total, ctx.user.email],
   );
   if (!created) throw new Error('insert returned no row');
+  await learnPayee(t.payee, t.category_id);
   return one<Transaction>(`${TX_SELECT} AND t.id = $1`, [created.id]);
 }
 
@@ -202,12 +230,15 @@ async function updateTransaction(ctx: Ctx): Promise<Transaction | null> {
   const updated = await one<{ id: number }>(
     `UPDATE transactions
         SET occurred_on = $2, account_id = $3, category_id = $4, amount = $5,
-            payee = $6, note = $7, paid_by = $8, split = $9, updated_at = NOW()
+            payee = $6, note = $7, paid_by = $8, split = $9,
+            installment_no = $10, installments_total = $11, updated_at = NOW()
       WHERE id = $1 AND deleted_at IS NULL
       RETURNING id`,
-    [id, t.occurred_on, t.account_id, t.category_id, t.amount, t.payee, t.note, t.paid_by, t.split],
+    [id, t.occurred_on, t.account_id, t.category_id, t.amount, t.payee, t.note, t.paid_by, t.split,
+      t.installment_no, t.installments_total],
   );
   if (!updated) throw notFound('התנועה לא נמצאה');
+  await learnPayee(t.payee, t.category_id);
   return one<Transaction>(`${TX_SELECT} AND t.id = $1`, [id]);
 }
 
@@ -433,7 +464,20 @@ export default router([
   { method: 'GET', path: 'budget', role: 'viewer', handle: getBudget },
   { method: 'PUT', path: 'budget/:categoryId', handle: setAllocation },
 
+  // The household's Excel template, both ways. Viewer for the download, as
+  // with every export: someone who can read every number may take them.
+  { method: 'GET', path: 'workbook', role: 'viewer', handle: downloadWorkbook },
+  { method: 'POST', path: 'workbook/import', handle: importWorkbook },
+
   { method: 'GET', path: 'transactions', role: 'viewer', handle: listTransactions },
+  {
+    method: 'GET', path: 'payee-rules', role: 'viewer',
+    handle: async () => query(
+      `SELECT r.payee_key, r.category_id FROM payee_rules r
+         JOIN categories c ON c.id = r.category_id AND c.archived_at IS NULL
+        ORDER BY r.updated_at DESC LIMIT 2000`,
+    ),
+  },
   { method: 'POST', path: 'transactions', handle: createTransaction },
   { method: 'PATCH', path: 'transactions/:id', handle: updateTransaction },
   { method: 'DELETE', path: 'transactions/:id', handle: deleteTransaction },

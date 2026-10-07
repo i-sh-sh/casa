@@ -102,6 +102,8 @@ export interface Transaction {
   paid_by: string | null;
   split: Split;
   transfer_id: string | null;
+  installment_no: number | null;
+  installments_total: number | null;
   created_by: string | null;
   created_at: string;
 }
@@ -139,6 +141,30 @@ export interface BudgetMonth {
   commitments: CommitmentSlice[];
   /** Whether enough is set aside for the things we cannot see coming. */
   unplanned: UnplannedCheck;
+  /** Installments still to be charged after this month. Read off recorded rows; see futureCommitments. */
+  ahead?: FutureCommitments;
+}
+
+/** One purchase in installments, and what of it is still to come. */
+export interface InstallmentSeries {
+  payee: string;
+  category_name: string | null;
+  /** One installment, positive. */
+  per_month: number;
+  /** The last one recorded, of how many. */
+  installment_no: number;
+  installments_total: number;
+  /** installments_total − installment_no. */
+  remaining: number;
+  /** per_month × remaining. */
+  remaining_total: number;
+}
+
+export interface FutureCommitments {
+  series: InstallmentSeries[];
+  /** What next month already owes, before anything is bought in it. */
+  next_month: number;
+  total: number;
 }
 
 /**

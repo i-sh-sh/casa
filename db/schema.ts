@@ -210,6 +210,23 @@ CREATE TABLE IF NOT EXISTS settlements (
   CHECK (from_email <> to_email)
 );
 
+-- Which line a merchant's charges belong to, learned from the household's own
+-- filing. The Excel template has a «סעיף בבקרה החודשית» column that is filled
+-- in by hand, row by row, every month — «רמי לוי» is «מזון» every single time.
+-- A rule is written whenever a transaction is saved or imported with both a
+-- payee and a category, so the next one can arrive already filed. It is a
+-- suggestion the person sees before saving, never a figure: it moves no money.
+CREATE TABLE IF NOT EXISTS payee_rules (
+  id           SERIAL PRIMARY KEY,
+  -- Lower-cased, gershayim and spacing normalised (nameKey in
+  -- shared/budget-workbook.ts). The payee as typed is kept for display.
+  payee_key    TEXT NOT NULL,
+  payee        TEXT NOT NULL,
+  category_id  INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+  hits         INTEGER NOT NULL DEFAULT 1,
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- Pantry — stock that knows when it is running out (the Grocy model)
 -- ─────────────────────────────────────────────────────────────────────────
@@ -350,6 +367,15 @@ CREATE TABLE IF NOT EXISTS sent_notifications (
 
 ALTER TABLE categories ADD COLUMN IF NOT EXISTS commitment TEXT NOT NULL DEFAULT 'flexible';
 
+-- A purchase split into installments is one decision charged over months.
+-- Each charged installment is its own transaction, in the month it was
+-- charged; these say which one it is, so what is still to come can be read
+-- off the last one (futureCommitments in shared/money.ts). \`charged_on\` is
+-- the card's billing date, which the template keeps beside the purchase date.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS installment_no INTEGER;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS installments_total INTEGER;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS charged_on DATE;
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- Households — more than one home in one database
 -- ─────────────────────────────────────────────────────────────────────────
@@ -431,7 +457,7 @@ DECLARE
     'accounts', 'category_groups', 'categories', 'budget_allocations',
     'transactions', 'recurring_bills', 'settlements',
     'products', 'stock_entries', 'stock_log', 'shopping_items',
-    'sent_notifications'
+    'sent_notifications', 'payee_rules'
   ];
   scope_expr TEXT := 'nullif(current_setting(''casa.household_id'', true), '''')::int';
 BEGIN
@@ -520,6 +546,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS shopping_items_one_open_per_name
   ON shopping_items (household_id, name_key) WHERE status = 'open' AND product_id IS NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS sent_notifications_once
   ON sent_notifications (household_id, kind, subject_key, sent_on);
+CREATE UNIQUE INDEX IF NOT EXISTS payee_rules_once
+  ON payee_rules (household_id, payee_key);
 
 -- ─────────────────────────────────────────────────────────────────────────
 -- Working offline in the supermarket
@@ -555,6 +583,17 @@ BEGIN
   ) THEN
     ALTER TABLE categories ADD CONSTRAINT categories_commitment_check
       CHECK (commitment IN ('rigid', 'flexible', 'liquid', 'unplanned'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  -- Same reason as categories_commitment_check above: a CHECK has no IF NOT
+  -- EXISTS, and a re-run must not abort.
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'transactions_installments_check') THEN
+    ALTER TABLE transactions ADD CONSTRAINT transactions_installments_check
+      CHECK ((installment_no IS NULL AND installments_total IS NULL)
+          OR (installment_no >= 1 AND installments_total >= 2 AND installment_no <= installments_total));
   END IF;
 END $$;
 `;

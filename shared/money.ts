@@ -1,6 +1,6 @@
 import type {
   BudgetMonth, EnvelopeRow, Category, BalanceBetweenUs, CashFlow,
-  Commitment, CommitmentSlice, UnplannedCheck,
+  Commitment, CommitmentSlice, FutureCommitments, InstallmentSeries, UnplannedCheck,
 } from './types.js';
 
 /**
@@ -309,6 +309,62 @@ export function cashFlow(income: number, spent: number): CashFlow {
     income: round2(income),
     spent: round2(spent),
     monthly: round2(income - spent),
+  };
+}
+
+// ── Installments ─────────────────────────────────────────────────────────
+
+export interface InstallmentInput {
+  occurred_on: string;
+  payee: string;
+  category_name: string | null;
+  /** Signed, as stored. */
+  amount: number;
+  installment_no: number;
+  installments_total: number;
+}
+
+/**
+ * What installment purchases have already spent of the months to come.
+ *
+ * docs/PLAN.md §5, from the course the budget method comes from: ₪400 of
+ * groceries split into four is ₪100 a month that looks cheap, and done every
+ * month it is ₪400 a month regardless — plus ₪600 owed forward that no screen
+ * shows. This is that ₪600, and nothing more: a sum of rows the household
+ * recorded, each one saying «2 of 3».
+ *
+ * One series is one payee, one amount and one count. Its latest recorded
+ * installment says how many are left. A series counts only if that latest
+ * installment fell in `month` or the month before: a card statement is
+ * imported once a month, and a series whose next charge never arrived was
+ * cancelled or refunded, not still owed.
+ */
+export function futureCommitments(rows: InstallmentInput[], month: string): FutureCommitments {
+  const from = previousMonth(month);
+  const until = nextMonth(month);
+  const latest = new Map<string, InstallmentInput>();
+  for (const r of rows) {
+    if (r.occurred_on < from || r.occurred_on >= until) continue;
+    const key = `${r.payee.trim().toLowerCase()}|${round2(Math.abs(r.amount))}|${r.installments_total}`;
+    const seen = latest.get(key);
+    if (!seen || r.installment_no > seen.installment_no) latest.set(key, r);
+  }
+  const series: InstallmentSeries[] = [];
+  for (const r of latest.values()) {
+    const remaining = r.installments_total - r.installment_no;
+    if (remaining <= 0) continue;
+    const per = round2(Math.abs(r.amount));
+    series.push({
+      payee: r.payee, category_name: r.category_name, per_month: per,
+      installment_no: r.installment_no, installments_total: r.installments_total,
+      remaining, remaining_total: round2(per * remaining),
+    });
+  }
+  series.sort((a, b) => b.remaining_total - a.remaining_total);
+  return {
+    series,
+    next_month: round2(series.reduce((s, x) => s + x.per_month, 0)),
+    total: round2(series.reduce((s, x) => s + x.remaining_total, 0)),
   };
 }
 
