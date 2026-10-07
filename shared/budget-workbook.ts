@@ -580,10 +580,30 @@ export function installmentOf(text: unknown): [number, number] | null {
   return [no, total];
 }
 
+/** One line of a twelve-month sheet: a value per calendar month, January first. */
+export interface ParsedYearLine {
+  section: 'income' | 'expense';
+  group: string | null;
+  name: string;
+  months: (number | null)[];
+}
+
+/**
+ * «2B. תקציב שנתי» or «4. מעקב הוצאות שנתי». Which one it is decides whether
+ * its figures become allocations or «בפועל» for months other than the file's.
+ */
+export interface ParsedYear {
+  sheet: string;
+  role: 'budget' | 'actual';
+  lines: ParsedYearLine[];
+}
+
 export interface ParsedBudget {
   month: string | null;
   lines: ParsedLine[];
   transactions: ParsedTransaction[];
+  /** The annual sheets, for the months around the one the file is about. */
+  years?: ParsedYear[];
   /** Which sheets were read, by name — said back to the person before anything is written. */
   sources: string[];
   warnings: string[];
@@ -668,7 +688,7 @@ const BUDGET_HEADER = 'התקציב החודשי שלי';
  * rather than read at the wrong offset.
  */
 export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
-  const out: ParsedBudget = { month: null, lines: [], transactions: [], sources: [], warnings: [] };
+  const out: ParsedBudget = { month: null, lines: [], transactions: [], years: [], sources: [], warnings: [] };
   const grids = sheets.map((s) => ({ name: s.name, g: gridOf(s) }));
 
   // «בקרה חודשית»: the budget and the actuals, side by side.
@@ -735,6 +755,75 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
     }
   }
 
+  // «התקציב החודשי» (2A): the same budget as «בקרה», as a plain list. It only
+  // fills what «בקרה» left empty — the control sheet is the live one, and the
+  // template's own instructions say to copy 2A into it.
+  for (const { name, g } of grids) {
+    if (control && name === control.name) continue;
+    for (let r = 1; r <= Math.min(g.maxRow, 40); r++) {
+      const budgetCol = findCol(g, r, (t) => t === 'תקציב חודשי' || t === 'סכום חודשי');
+      const nameCol = findCol(g, r, (t) => t === 'הוצאה' || t === 'מקור ההכנסה');
+      if (budgetCol < 0 || nameCol < 0 || budgetCol < nameCol) continue;
+      const section = g.text(nameCol, r) === 'מקור ההכנסה' ? 'income' : 'expense';
+      const groupCol = section === 'expense' ? findCol(g, r, (t) => t === 'קטגוריה') : -1;
+      let group: string | null = null;
+      let used = false;
+      for (let row = r + 1; row <= g.maxRow; row++) {
+        const label = g.text(nameCol, row);
+        const groupText = groupCol >= 0 ? g.text(groupCol, row) : '';
+        if (isTotal(label) || isTotal(groupText) || isTotal(g.text(nameCol - 1, row))) break;
+        if (groupText) group = groupText;
+        const budget = numberOf(g.get(budgetCol, row));
+        if (!label || budget == null || budget === 0) continue;
+        const key = nameKey(label);
+        const known = out.lines.find((l) => l.section === section && nameKey(l.name) === key);
+        if (known) {
+          if (known.budget == null) { known.budget = budget; used = true; }
+          continue;
+        }
+        out.lines.push({ section, group: section === 'income' ? null : group, name: label, budget, actual: null, note: null, commitment: null });
+        used = true;
+      }
+      if (used && !out.sources.includes(name.trim())) out.sources.push(name.trim());
+    }
+  }
+
+  // The twelve-month sheets: any table whose header names the months.
+  for (const { name, g } of grids) {
+    if (control && name === control.name) continue;
+    const lines: ParsedYearLine[] = [];
+    for (let r = 1; r <= g.maxRow; r++) {
+      const labelCol = findCol(g, r, (t) => t.startsWith('פירוט'));
+      if (labelCol < 0) continue;
+      const monthCols = MONTHS.map((m) => findCol(g, r, (t) => t === m));
+      if (monthCols.filter((c) => c >= 0).length < 6) continue;
+      const section = g.text(labelCol, r).includes('הכנס') ? 'income' : 'expense';
+      const groupCol = section === 'expense' && labelCol > 0 ? labelCol - 1 : -1;
+      let group: string | null = null;
+      for (let row = r + 1; row <= g.maxRow; row++) {
+        const label = g.text(labelCol, row);
+        const groupText = groupCol >= 0 ? g.text(groupCol, row) : '';
+        if (isTotal(label) || isTotal(groupText)) break;
+        if (findCol(g, row, (t) => t.startsWith('פירוט')) >= 0) break;
+        if (groupText) group = groupText;
+        if (!label) continue;
+        const months = monthCols.map((c) => (c >= 0 ? numberOf(g.get(c, row)) : null));
+        if (!months.some((v) => v != null && v !== 0)) continue;
+        lines.push({ section, group: section === 'income' ? null : group, name: label, months });
+      }
+    }
+    if (!lines.length) continue;
+    out.years!.push({ sheet: name.trim(), role: name.includes('מעקב') || name.includes('בפועל') ? 'actual' : 'budget', lines });
+    out.sources.push(name.trim());
+  }
+
+  // The template asks for the rung in «שיקוף המצב» and nowhere else, and that
+  // sheet is the one most often left empty. Saying so is the difference
+  // between «everything is flexible» and «nobody has said yet».
+  if (out.lines.some((l) => l.section === 'expense') && !out.lines.some((l) => l.commitment)) {
+    out.warnings.push('בקובץ אין סיווג קשיחות/גמישות (בגיליון «שיקוף המצב» העמודה ריקה). סעיפים חדשים ייכנסו כגמישים, ואפשר לסווג אותם במסך התקציב תחת «לסווג את הסעיפים».');
+  }
+
   // Transaction sheets: a header row with an amount and a «סעיף» column.
   for (const { name, g } of grids) {
     if (control && name === control.name) continue;
@@ -785,6 +874,31 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
     const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
     if (top) out.month = `${top[0]}-01`;
   }
+
+  // A «תקציב שנתי» filled in with what was spent is common enough to check:
+  // the file's own month says which it is. If that column agrees with
+  // «בפועל» in «בקרה» rather than with the budget, the sheet is read as
+  // what happened, and the person is told.
+  if (out.month) {
+    const i = Number(out.month.slice(5, 7)) - 1;
+    for (const year of out.years!) {
+      if (year.role !== 'budget') continue;
+      let asBudget = 0;
+      let asActual = 0;
+      for (const yl of year.lines) {
+        const v = yl.months[i];
+        if (v == null || v === 0) continue;
+        const l = out.lines.find((x) => x.section === yl.section && nameKey(x.name) === nameKey(yl.name));
+        if (!l) continue;
+        if (l.budget != null && cents(l.budget) === cents(v)) asBudget++;
+        if (l.actual != null && cents(l.actual) === cents(v)) asActual++;
+      }
+      if (asActual > asBudget && asActual >= 2) {
+        year.role = 'actual';
+        out.warnings.push(`בגיליון «${year.sheet}» עמודת ${MONTHS[i]} זהה ל«בפועל» ולא לתקציב, אז הגיליון נקרא כמה שהוצא בפועל בכל חודש.`);
+      }
+    }
+  }
   return out;
 }
 
@@ -829,7 +943,24 @@ export interface ImportPlan {
   retire: number[];
   /** «סעיף» values on transactions that match no line and no category; those rows import unfiled. */
   unmatched: string[];
+  /** The other months of the year, from the annual sheets. */
+  months: MonthPlan[];
   warnings: string[];
+}
+
+/**
+ * A month the file speaks about only through its annual sheets: a budget
+ * (2B) and/or a «בפועל» (4) per line, with no transactions behind it. The
+ * budget becomes allocations; «בפועל» becomes one gap row per line against
+ * whatever that month already has recorded — the same rule as the file's own
+ * month, so importing a year twice changes nothing the second time.
+ */
+export interface MonthPlan {
+  month: string;
+  allocations: { category: CategoryRef; name: string; allocated: number }[];
+  unchangedAllocations: number;
+  adjustments: { category: CategoryRef; name: string; amount: number }[];
+  retire: number[];
 }
 
 const txKey = (date: string, amount: number, payee: string) => `${date}|${cents(amount).toFixed(2)}|${nameKey(payee)}`;
@@ -852,13 +983,15 @@ export function planImport(params: {
   transactions: ExistingTransaction[];
   /** payee_rules: which category this household filed each payee under. */
   rules?: { payee_key: string; category_id: number }[];
+  /** The rest of the file's year, for the annual sheets: allocations and rows by month. */
+  history?: { allocations: { month: string; category_id: number; allocated: number }[]; transactions: ExistingTransaction[] };
 }): ImportPlan {
   const { parsed, month, categories, groups, allocations, transactions } = params;
   const rules = new Map((params.rules ?? []).map((r) => [r.payee_key, r.category_id]));
   const live = new Set(categories.map((c) => c.id));
   const plan: ImportPlan = {
     month, newGroups: [], newCategories: [], commitments: [], allocations: [], unchangedAllocations: 0,
-    transactions: [], duplicates: 0, byPayee: 0, adjustments: [], retire: [], unmatched: [], warnings: [...parsed.warnings],
+    transactions: [], duplicates: 0, byPayee: 0, adjustments: [], retire: [], unmatched: [], months: [], warnings: [...parsed.warnings],
   };
   const monthEnd = addMonths(month, 1);
   const inMonth = (d: string) => d >= month && d < monthEnd;
@@ -869,7 +1002,7 @@ export function planImport(params: {
   // A line resolves to a category of the same direction, preferring the same
   // group: «חשמל» under «דיור» in the file is our «חשמל» even when we filed
   // it under «קבועות», but if both exist the group decides.
-  const resolve = (line: ParsedLine): CategoryRef => {
+  const resolve = (line: ParsedLine, loose = false): CategoryRef => {
     const income = line.section === 'income';
     const group = income ? 'הכנסות' : line.group ?? 'שונות';
     const key = nameKey(line.name);
@@ -882,7 +1015,11 @@ export function planImport(params: {
       return { id: match.id };
     }
     const newKey = `${income ? 'in' : 'out'}|${nameKey(group)}|${key}`;
-    const existing = newByKey.get(newKey);
+    // The annual sheets (`loose`) get the same rule for a category this import
+    // is creating: they often file «מזון» under another group than «בקרה»
+    // does, and that is still one line, not two. Within «בקרה» itself two
+    // groups may each have their own «אחר».
+    const existing = newByKey.get(newKey) ?? (loose ? newByKey.get(`${income ? 'in' : 'out'}|*|${key}`) : undefined);
     if (existing != null) return { new: existing };
     if (!existingGroups.has(nameKey(group)) && !plan.newGroups.some((g) => nameKey(g) === nameKey(group))) {
       plan.newGroups.push(group);
@@ -894,6 +1031,7 @@ export function planImport(params: {
       commitment: line.commitment ?? (/לא צפוי/.test(group) ? 'unplanned' : 'flexible'),
     });
     newByKey.set(newKey, plan.newCategories.length - 1);
+    if (!newByKey.has(`${income ? 'in' : 'out'}|*|${key}`)) newByKey.set(`${income ? 'in' : 'out'}|*|${key}`, plan.newCategories.length - 1);
     return { new: plan.newCategories.length - 1 };
   };
 
@@ -983,7 +1121,76 @@ export function planImport(params: {
   for (const t of earlier) {
     if (!kept.has(t.id) && t.category_id != null && spokenFor.has(t.category_id)) plan.retire.push(t.id);
   }
+
+  planYear(plan, parsed, month, resolve, params.history);
   return plan;
+}
+
+function planYear(
+  plan: ImportPlan,
+  parsed: ParsedBudget,
+  month: string,
+  resolve: (line: ParsedLine, loose?: boolean) => CategoryRef,
+  history: { allocations: { month: string; category_id: number; allocated: number }[]; transactions: ExistingTransaction[] } = { allocations: [], transactions: [] },
+): void {
+  const year = month.slice(0, 4);
+  const byMonth = new Map<string, MonthPlan>();
+  const monthPlan = (m: string) => {
+    let mp = byMonth.get(m);
+    if (!mp) byMonth.set(m, (mp = { month: m, allocations: [], unchangedAllocations: 0, adjustments: [], retire: [] }));
+    return mp;
+  };
+  const refKey = (ref: CategoryRef) => ('id' in ref ? `id${ref.id}` : `new${ref.new}`);
+  // Each (month, line) once per role: two budget sheets naming the same line
+  // agree or the later one wins, rather than allocating it twice.
+  const budgets = new Map<string, { m: string; ref: CategoryRef; name: string; value: number }>();
+  const actuals = new Map<string, { m: string; ref: CategoryRef; name: string; value: number; income: boolean }>();
+
+  for (const sheet of parsed.years ?? []) {
+    for (const yl of sheet.lines) {
+      if (UNFILED_NAMES.has(normalizeName(yl.name)) && (yl.section === 'income' || yl.group === UNFILED_GROUP)) continue;
+      let ref: CategoryRef | null = null;
+      yl.months.forEach((value, i) => {
+        if (value == null || value === 0) return;
+        const m = `${year}-${String(i + 1).padStart(2, '0')}-01`;
+        // The file's own month comes from «בקרה» and the transactions, which
+        // are richer than a single figure. And «בפועל» after that month has
+        // not happened yet; a number there is a forecast, not a record.
+        if (m === month) return;
+        if (sheet.role === 'actual' && m > month) return;
+        ref ??= resolve({ section: yl.section, group: yl.group, name: yl.name, budget: null, actual: null, note: null, commitment: null }, true);
+        const k = `${m}|${refKey(ref)}`;
+        if (sheet.role === 'budget') budgets.set(k, { m, ref, name: yl.name, value: cents(value) });
+        else actuals.set(k, { m, ref, name: yl.name, value: cents(value), income: yl.section === 'income' });
+      });
+    }
+  }
+
+  for (const b of budgets.values()) {
+    const mp = monthPlan(b.m);
+    const current = 'id' in b.ref ? history.allocations.find((a) => a.month === b.m && a.category_id === (b.ref as { id: number }).id) : undefined;
+    if (current && cents(current.allocated) === b.value) { mp.unchangedAllocations++; continue; }
+    mp.allocations.push({ category: b.ref, name: b.name, allocated: b.value });
+  }
+
+  const inMonth = (d: string, m: string) => d >= m && d < addMonths(m, 1);
+  const kept = new Set<number>();
+  for (const a of actuals.values()) {
+    const mp = monthPlan(a.m);
+    const id = 'id' in a.ref ? a.ref.id : null;
+    const rows = id == null ? [] : history.transactions.filter((t) => t.category_id === id && inMonth(t.occurred_on, a.m));
+    const recorded = cents(rows.filter((t) => t.payee !== ADJUSTMENT_PAYEE).reduce((s, t) => s + t.amount, 0));
+    const gap = cents((a.income ? a.value : -a.value) - recorded);
+    const earlier = rows.filter((t) => t.payee === ADJUSTMENT_PAYEE);
+    const match = earlier.find((t) => cents(t.amount) === gap && !kept.has(t.id));
+    if (match) kept.add(match.id);
+    for (const t of earlier) if (t !== match && !kept.has(t.id)) mp.retire.push(t.id);
+    if (gap !== 0 && !match) mp.adjustments.push({ category: a.ref, name: a.name, amount: gap });
+  }
+
+  plan.months = [...byMonth.values()]
+    .filter((mp) => mp.allocations.length || mp.unchangedAllocations || mp.adjustments.length || mp.retire.length)
+    .sort((x, y) => x.month.localeCompare(y.month));
 }
 
 export interface ImportSummary {
@@ -1002,6 +1209,8 @@ export interface ImportSummary {
   adjustments: { name: string; amount: number }[];
   retire: number;
   unmatched: string[];
+  /** Per other month of the year: what the annual sheets change there. */
+  months: { month: string; allocations: number; unchanged_allocations: number; adjustments: number; spent: number; income: number; retire: number }[];
   warnings: string[];
   applied: boolean;
 }
@@ -1024,6 +1233,17 @@ export function summarizePlan(plan: ImportPlan, accountName: string | null, appl
     adjustments: plan.adjustments.map((a) => ({ name: a.name, amount: a.amount })),
     retire: plan.retire.length,
     unmatched: plan.unmatched,
+    months: plan.months.map((m) => ({
+      month: m.month,
+      allocations: m.allocations.length,
+      unchanged_allocations: m.unchangedAllocations,
+      adjustments: m.adjustments.length,
+      // Split by direction: a month's gap rows are spends and income together,
+      // and their net would be a figure that appears in no column of the file.
+      spent: cents(m.adjustments.filter((a) => a.amount < 0).reduce((s, a) => s - a.amount, 0)),
+      income: cents(m.adjustments.filter((a) => a.amount > 0).reduce((s, a) => s + a.amount, 0)),
+      retire: m.retire.length,
+    })),
     warnings: plan.warnings,
     applied,
   };

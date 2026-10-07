@@ -1,14 +1,42 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { Link } from '../../lib/router.js';
 import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds } from '../../ui/kit.js';
+import { Explainable } from '../../ui/Explain.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import {
   COMMITMENTS, COMMITMENT_LABELS, COMMITMENT_NOTES,
   formatILS, monthKey, nextMonth, previousMonth,
 } from '@shared/money.js';
-import type { BudgetMonth, Commitment, EnvelopeRow } from '@shared/types.js';
+import {
+  explainAhead, explainAllocated, explainCommitment, explainEnvelopeSpent, explainFlow,
+  explainGroup, explainIncome, explainSpent, explainUnbudgeted, explainUnfiled, explainUnplanned,
+} from '@shared/explain.js';
+import type { BudgetMonth, Category, Commitment, EnvelopeRow, Transaction } from '@shared/types.js';
+
+interface Details { txs: Transaction[]; incomeIds: number[] }
+
+/**
+ * The month's rows, fetched the first time somebody asks what a figure is made
+ * of — not with the screen. Most visits never open a slip, and the ones that do
+ * open several, so one request per month serves them all.
+ */
+function useDetails(month: string) {
+  const cache = useRef<{ month: string; p: Promise<Details> } | null>(null);
+  return () => {
+    if (!cache.current || cache.current.month !== month) {
+      const p = Promise.all([
+        api.get<Transaction[]>('/money/transactions', { month, limit: 500 }),
+        api.get<Category[]>('/money/categories'),
+      ]).then(([txs, cats]) => ({ txs, incomeIds: cats.filter((c) => c.kind === 'income').map((c) => c.id) }));
+      // A failed fetch must not be remembered as the answer for the month.
+      p.catch(() => { if (cache.current?.p === p) cache.current = null; });
+      cache.current = { month, p };
+    }
+    return cache.current.p;
+  };
+}
 
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 
@@ -44,7 +72,9 @@ export function BudgetScreen() {
   const [month, setMonth] = useState(() => monthKey(new Date()));
   const budget = useAsync(() => api.get<BudgetMonth>('/money/budget', { month }), [month]);
   const [editing, setEditing] = useState<EnvelopeRow | null>(null);
+  const [classifying, setClassifying] = useState(false);
   const folds = useFolds('budget');
+  const details = useDetails(month);
 
   const data = budget.data;
   const groups = (data?.envelopes ?? []).reduce<Record<string, EnvelopeRow[]>>((acc, env) => {
@@ -80,25 +110,33 @@ export function BudgetScreen() {
           <>
             <div className="hero">
               <div className="label">תזרים חודשי</div>
-              <div className={`figure ${short ? 'over' : ''}`}>{formatILS(data.flow.monthly, { sign: true })}</div>
+              <Explainable inline className="" style={{ display: 'block' }} explain={() => explainFlow(data)}>
+                <span className={`figure ${short ? 'over' : ''}`} style={{ display: 'block' }}>{formatILS(data.flow.monthly, { sign: true })}</span>
+              </Explainable>
               <div className="meta" style={{ marginTop: 'var(--s2)' }}>
-                נכנס <span className="n">{formatILS(data.flow.income)}</span>
-                {' · הוצא '}<span className="n">{formatILS(data.flow.spent)}</span>
+                נכנס{' '}
+                <Explainable inline className="" explain={async () => { const d = await details(); return explainIncome(data, d.txs, d.incomeIds); }}>
+                  <span className="n">{formatILS(data.flow.income)}</span>
+                </Explainable>
+                {' · הוצא '}
+                <Explainable inline className="" explain={() => explainSpent(data)}>
+                  <span className="n">{formatILS(data.flow.spent)}</span>
+                </Explainable>
               </div>
             </div>
 
             <section className="section">
               <h2>החודש · ₪</h2>
               <div className="rows">
-                <Line label="נכנס" value={data.income} />
-                <Line label="תוקצב" value={data.allocated} />
+                <Line label="נכנס" value={data.income} explain={async () => { const d = await details(); return explainIncome(data, d.txs, d.incomeIds); }} />
+                <Line label="תוקצב" value={data.allocated} explain={() => explainAllocated(data)} />
                 {/* Income minus what the budget claims. Not «to be budgeted»
                     across all of history — just this month against itself. */}
-                <Line label="לא תוקצב" value={data.to_be_budgeted} />
+                <Line label="לא תוקצב" value={data.to_be_budgeted} explain={() => explainUnbudgeted(data)} />
               </div>
             </section>
 
-            <Ladder data={data} />
+            <Ladder data={data} onClassify={() => setClassifying(true)} />
 
             {/* Spent with no category, so in no envelope. Named rather than
                 merely counted: it is in the month's flow either way, and the
@@ -107,14 +145,14 @@ export function BudgetScreen() {
               <section className="section">
                 <h2>לא שויך לקטגוריה</h2>
                 <div className="rows">
-                  <div className="row" style={{ borderBottom: 0 }}>
+                  <Explainable style={{ borderBottom: 0 }} explain={async () => { const d = await details(); return explainUnfiled(data, d.txs, d.incomeIds); }}>
                     <span className="grow meta">
-                      יצא מהחשבון ונספר בתזרים, אבל לא נכנס לשום מעטפה.
-                      {' '}<Link to="/transactions">לפתוח את התנועות</Link> ולשייך.
+                      יצא מהחשבון ונספר בתזרים, אבל לא נכנס לשום מעטפה. השיוך נעשה במסך התנועות.
                     </span>
                     <span className="n amount">{formatILS(data.unfiled, { symbol: false })}</span>
-                  </div>
+                  </Explainable>
                 </div>
+                <Link to="/transactions" className="btn btn-sm" style={{ marginTop: 'var(--s2)' }}>לפתוח את התנועות ולשייך</Link>
               </section>
             )}
 
@@ -162,13 +200,13 @@ export function BudgetScreen() {
                     ))}
                   </div>
                   <hr className="rule-2" />
-                  <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
+                  <Explainable style={{ minHeight: 44, borderBottom: 0 }} explain={() => explainGroup(groupName, envelopes)}>
                     <span className="margin-col" />
                     <span className="grow label">סך הקבוצה</span>
                     <span className={`n amount ${left < 0 ? 'over' : ''}`} style={{ fontWeight: 600 }}>
                       {formatILS(left, { symbol: false })}
                     </span>
-                  </div>
+                  </Explainable>
                 </Fold>
               );
             })}
@@ -182,10 +220,18 @@ export function BudgetScreen() {
         </Link>
       </div>
 
-      {editing && (
+      {classifying && data && (
+        <ClassifySheet
+          envelopes={data.envelopes}
+          onClose={() => { setClassifying(false); budget.reload(); }}
+        />
+      )}
+
+      {editing && data && (
         <AllocateSheet
           env={editing}
           month={month}
+          explainSpent={async () => { const d = await details(); return explainEnvelopeSpent(data, editing, d.txs); }}
           onClose={() => setEditing(null)}
           onSaved={() => {
             // The envelope that was just funded is inside a group that may be
@@ -213,9 +259,13 @@ export function BudgetScreen() {
  * people to skip the section, and by the time it has something to say they have
  * learned to.
  */
-function Ladder({ data }: { data: BudgetMonth }) {
+function Ladder({ data, onClassify }: { data: BudgetMonth; onClassify: () => void }) {
   const { commitments, unplanned } = data;
   if (commitments.every((c) => c.allocated === 0)) return null;
+  // Everything on one rung is almost never a decision; it is the default
+  // every new category gets (an import from a file whose «קשיחות» column was
+  // left empty does exactly this). Said once, with the way to fix it.
+  const oneRung = commitments.filter((c) => c.allocated > 0).length === 1;
 
   return (
     <section className="section">
@@ -225,7 +275,7 @@ function Ladder({ data }: { data: BudgetMonth }) {
           const slice = commitments.find((c) => c.commitment === key);
           if (!slice) return null;
           return (
-            <div className="row" key={key}>
+            <Explainable key={key} explain={() => explainCommitment(data, key)}>
               <span className="grow">
                 <span className="title" style={{ display: 'block' }}>{COMMITMENT_LABELS[key]}</span>
                 <span className="meter" style={{ maxWidth: 180 }} aria-hidden="true">
@@ -235,17 +285,29 @@ function Ladder({ data }: { data: BudgetMonth }) {
               </span>
               <span className="margin-col n">{Math.round(slice.share * 100)}%</span>
               <span className="n amount">{formatILS(slice.allocated, { symbol: false })}</span>
-            </div>
+            </Explainable>
           );
         })}
       </div>
+
+      {oneRung && (
+        <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+          כל הסעיפים מסווגים כרגע באותה דרגה. כנראה שאף אחד עוד לא סיווג אותם.
+        </p>
+      )}
+      <button type="button" className="btn btn-block" style={{ marginTop: 'var(--s3)' }} onClick={onClassify}>
+        לסווג את הסעיפים
+      </button>
 
       {!unplanned.meets_floor && (
         <div className="note-error" role="status">
           <div style={{ display: 'flex', gap: 'var(--s2)', alignItems: 'flex-start' }}>
             <Icon name="alert" size={18} />
             <div style={{ flex: 1 }}>
-              לבלת״מ מוקצים <span className="n">{Math.round(unplanned.share * 100)}%</span> מהחודש.
+              לבלת״מ מוקצים{' '}
+              <Explainable inline className="" explain={() => explainUnplanned(data)}>
+                <span className="n">{Math.round(unplanned.share * 100)}%</span>
+              </Explainable>{' '}מהחודש.
               מומלץ <span className="n">5%</span> לפחות — חסרים{' '}
               <span className="n">{formatILS(unplanned.shortfall)}</span>.
               <div style={{ marginTop: 'var(--s1)', fontSize: 14 }}>
@@ -289,21 +351,21 @@ function Ahead({ data }: { data: BudgetMonth }) {
         ))}
       </div>
       <hr className="rule-2" />
-      <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
+      <Explainable style={{ minHeight: 44, borderBottom: 0 }} explain={() => explainAhead(data)}>
         <span className="margin-col" />
         <span className="grow label">סך הכול עוד לחייב</span>
         <span className="n amount">{formatILS(ahead.total, { symbol: false })}</span>
-      </div>
+      </Explainable>
     </section>
   );
 }
 
-function Line({ label, value }: { label: string; value: number }) {
+function Line({ label, value, explain }: { label: string; value: number; explain: Parameters<typeof Explainable>[0]['explain'] }) {
   return (
-    <div className="row" style={{ minHeight: 40 }}>
+    <Explainable style={{ minHeight: 48 }} explain={explain}>
       <span className="grow label">{label}</span>
       <span className={`n amount ${value < 0 ? 'over' : ''}`}>{formatILS(value)}</span>
-    </div>
+    </Explainable>
   );
 }
 
@@ -347,9 +409,10 @@ function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void })
  * it needs. «נשאר» underneath is live: it is what the figure in the box would
  * leave, so the answer is visible before the save rather than after it.
  */
-function AllocateSheet({ env, month, onClose, onSaved }: {
+function AllocateSheet({ env, month, explainSpent, onClose, onSaved }: {
   env: EnvelopeRow;
   month: string;
+  explainSpent: Parameters<typeof Explainable>[0]['explain'];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -388,10 +451,10 @@ function AllocateSheet({ env, month, onClose, onSaved }: {
         </Field>
 
         <div className="rows" style={{ marginBottom: 'var(--s5)' }}>
-          <div className="row" style={{ minHeight: 44 }}>
+          <Explainable style={{ minHeight: 48 }} explain={explainSpent}>
             <span className="grow label">הוצא החודש</span>
             <span className="n amount">{formatILS(env.spent, { symbol: false })}</span>
-          </div>
+          </Explainable>
           <hr className="rule-2" />
           <div className="row" style={{ minHeight: 48, borderBottom: 0 }}>
             <span className="grow label">יישאר</span>
@@ -401,6 +464,64 @@ function AllocateSheet({ env, month, onClose, onSaved }: {
           </div>
         </div>
       </AsyncForm>
+    </Sheet>
+  );
+}
+
+/**
+ * Every spending category and its rung, on one page.
+ *
+ * The ladder is only as true as the classification under it, and the only
+ * other place to set it is one category at a time inside the allocation
+ * sheet — forty taps through forty sheets for a household that just imported
+ * its file. Each change saves on its own, so leaving halfway keeps what was
+ * done.
+ */
+function ClassifySheet({ envelopes, onClose }: { envelopes: EnvelopeRow[]; onClose: () => void }) {
+  const [values, setValues] = useState<Record<number, Commitment>>(
+    () => Object.fromEntries(envelopes.map((e) => [e.category_id, e.commitment])),
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  const change = async (id: number, commitment: Commitment) => {
+    const before = values[id]!;
+    setValues((v) => ({ ...v, [id]: commitment }));
+    setError(null);
+    try {
+      await api.patch(`/money/categories/${id}`, { commitment });
+    } catch (err) {
+      setValues((v) => ({ ...v, [id]: before }));
+      setError(err instanceof Error ? err.message : 'השמירה נכשלה');
+    }
+  };
+
+  return (
+    <Sheet title="סיווג הסעיפים" onClose={onClose}>
+      <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
+        {COMMITMENTS.map((c) => `${COMMITMENT_LABELS[c]}: ${COMMITMENT_NOTES[c]}`).join('. ')}.
+      </p>
+      {error && <ErrorNote message={error} />}
+      <div className="rows">
+        {envelopes.map((e) => (
+          <label className="row" key={e.category_id} style={{ minHeight: 56 }}>
+            <span className="grow">
+              <span className="title" style={{ display: 'block' }}>{e.category_name}</span>
+              {e.group_name && <span className="meta">{e.group_name}</span>}
+            </span>
+            <select
+              className="select"
+              style={{ width: 'auto', minWidth: 120 }}
+              value={values[e.category_id]}
+              onChange={(ev) => { void change(e.category_id, ev.target.value as Commitment); }}
+            >
+              {COMMITMENTS.map((c) => <option key={c} value={c}>{COMMITMENT_LABELS[c]}</option>)}
+            </select>
+          </label>
+        ))}
+      </div>
+      <button type="button" className="btn btn-primary btn-block" style={{ marginTop: 'var(--s4)' }} onClick={onClose}>
+        סיום
+      </button>
     </Sheet>
   );
 }

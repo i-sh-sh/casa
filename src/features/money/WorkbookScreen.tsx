@@ -110,7 +110,8 @@ function ImportSection() {
 
   const nothing = preview && !preview.applied
     && !preview.new_categories.length && !preview.allocations && !preview.transactions
-    && !preview.adjustments.length && !preview.retire && !preview.commitments;
+    && !preview.adjustments.length && !preview.retire && !preview.commitments
+    && !preview.months.some((m) => m.allocations || m.adjustments || m.retire);
 
   return (
     <section className="section">
@@ -256,6 +257,33 @@ function Preview({ summary, sources }: { summary: ImportSummary; sources: string
   }
   if (summary.retire) {
     lines.push({ label: 'השלמות קודמות', value: `${summary.retire} יוחלפו בחדשות` });
+  }
+  // The rest of the year, from the annual sheets: one sentence per month, so
+  // «מרץ: 12 סעיפי תקציב, 3 השלמות» can be checked against the file's columns.
+  const months = summary.months.filter((m) => m.allocations || m.adjustments || m.retire);
+  if (months.length) {
+    lines.push({
+      label: 'חודשים נוספים מהגיליונות השנתיים',
+      value: `${months.length} חודשים`,
+      detail: (
+        <>
+          {months.map((m, i) => {
+            const parts = [
+              m.allocations ? `${m.allocations} סעיפי תקציב` : '',
+              m.retire ? `${m.retire} השלמות קודמות יוחלפו` : '',
+            ].filter(Boolean);
+            return (
+              <Fragment key={m.month}>
+                {i > 0 && <br />}
+                {monthLabel(m.month)}: {parts.join(', ')}
+                {m.spent > 0 && <>{parts.length ? ', ' : ''}השלמת הוצאות <span className="n">{formatILS(m.spent)}</span></>}
+                {m.income > 0 && <>{parts.length || m.spent ? ', ' : ''}השלמת הכנסות <span className="n">{formatILS(m.income)}</span></>}
+              </Fragment>
+            );
+          })}
+        </>
+      ),
+    });
   }
 
   return (

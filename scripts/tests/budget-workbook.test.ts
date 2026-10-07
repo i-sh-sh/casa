@@ -302,16 +302,22 @@ test('an exported month imports back as itself — nothing new, nothing changed'
   const parsed = parseBudgetWorkbook(await read(buildBudgetWorkbook(month)));
   assert.equal(parsed.month, '2026-09-01');
 
+  const transactions = month.transactions.map((t, i) => ({
+    id: i + 1, occurred_on: t.occurred_on, amount: t.amount, payee: t.payee,
+    category_id: month.categories.find((c) => c.name === t.category_name)?.id ?? null,
+  }));
   const plan = planImport({
     parsed,
     month: '2026-09-01',
     categories: month.categories,
     groups: ['הכנסות', 'קבועות', 'יומיום'],
     allocations: month.allocations.filter((a) => a.month === '2026-09-01'),
-    transactions: month.transactions.map((t, i) => ({
-      id: i + 1, occurred_on: t.occurred_on, amount: t.amount, payee: t.payee,
-      category_id: month.categories.find((c) => c.name === t.category_name)?.id ?? null,
-    })),
+    transactions,
+    // August is in the annual sheets: its budget, and one purchase behind its «בפועל».
+    history: {
+      allocations: month.allocations,
+      transactions: [...transactions, { id: 99, occurred_on: '2026-08-12', amount: -1700, payee: 'רמי לוי', category_id: 3 }],
+    },
   });
 
   assert.deepEqual(plan.allocations, []);
@@ -322,6 +328,96 @@ test('an exported month imports back as itself — nothing new, nothing changed'
   // here, unfiled, and stays that way.
   assert.deepEqual(plan.newCategories, []);
   assert.deepEqual(plan.adjustments, []);
+  assert.deepEqual(plan.months.map((m) => [m.month, m.allocations.length, m.unchangedAllocations, m.adjustments.length]), [['2026-08-01', 0, 1, 0]]);
+});
+
+// ── The annual sheets ────────────────────────────────────────────────────
+
+const MONTH_HEAD = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+
+function yearFile(name: string, food: (number | null)[], salary: (number | null)[]): WriteSheet[] {
+  return [
+    ...householdFile(),
+    sheetOf(name, [
+      [null, 'פירוט הכנסות', null, ...MONTH_HEAD, 'מצטבר'],
+      [null, 'הכנסה מעבודה 1', null, ...salary],
+      [null, 'סה"כ'],
+      [],
+      [null, null, 'פירוט הוצאות', ...MONTH_HEAD, 'מצטבר'],
+      [null, 'מכולת', 'מזון', ...food],
+      [null, 'סה"כ הוצאות'],
+    ]),
+  ];
+}
+
+test('a year of budget becomes allocations for the other months, once', async () => {
+  const parsed = parseBudgetWorkbook(await read(yearFile('2B. תקציב שנתי', [1500, 1500, 1600, null, null, null, null, null, 1700, 1800], [])));
+  assert.equal(parsed.years!.length, 1);
+  assert.equal(parsed.years![0]!.role, 'budget');
+
+  const first = planImport({ parsed, month: '2026-09-01', categories: [], groups: [], allocations: [], transactions: [] });
+  // September is «בקרה»'s; the other five months come from the annual sheet.
+  assert.deepEqual(first.months.map((m) => [m.month, m.allocations.map((a) => a.allocated)]), [
+    ['2026-01-01', [1500]], ['2026-02-01', [1500]], ['2026-03-01', [1600]], ['2026-10-01', [1800]],
+  ]);
+  assert.equal(first.newCategories.filter((c) => c.name === 'מזון').length, 1, 'one category, whichever sheet named it first');
+
+  const state = applied(first, { categories: [], transactions: [] });
+  const foodId = state.categories.find((c) => c.name === 'מזון')!.id;
+  const second = planImport({
+    parsed, month: '2026-09-01', ...state,
+    history: {
+      allocations: first.months.flatMap((m) => m.allocations.map((a) => ({ month: m.month, category_id: foodId, allocated: a.allocated }))),
+      transactions: state.transactions,
+    },
+  });
+  assert.deepEqual(second.months.map((m) => [m.month, m.allocations.length, m.unchangedAllocations]), [
+    ['2026-01-01', 0, 1], ['2026-02-01', 0, 1], ['2026-03-01', 0, 1], ['2026-10-01', 0, 1],
+  ]);
+});
+
+test('a year of «בפועל» fills each past month with one gap row per line, and nothing in the future', async () => {
+  const parsed = parseBudgetWorkbook(await read(yearFile('4. מעקב הוצאות שנתי', [null, null, null, null, null, null, 1200, 1100, 999, 50], [null, null, null, null, null, null, 8000])));
+  assert.equal(parsed.years![0]!.role, 'actual');
+  const state = applied(
+    planImport({ parsed, month: '2026-09-01', categories: [], groups: [], allocations: [], transactions: [] }),
+    { categories: [], transactions: [] },
+  );
+  const foodId = state.categories.find((c) => c.name === 'מזון')!.id;
+  // August already has 1,000 of groceries recorded; the file says 1,100.
+  const recorded = { id: 500, occurred_on: '2026-08-14', amount: -1000, payee: 'שופרסל', category_id: foodId };
+  const plan = planImport({ parsed, month: '2026-09-01', ...state, history: { allocations: [], transactions: [recorded] } });
+  assert.deepEqual(plan.months.map((m) => [m.month, m.adjustments.map((a) => [a.name, a.amount])]), [
+    ['2026-07-01', [['הכנסה מעבודה 1', 8000], ['מזון', -1200]]],
+    ['2026-08-01', [['מזון', -100]]],
+  ]);
+
+  // Once those rows exist, the same file is a no-op; a corrected August replaces its row.
+  const after = [recorded, { id: 501, occurred_on: '2026-08-01', amount: -100, payee: ADJUSTMENT_PAYEE, category_id: foodId }];
+  const again = planImport({ parsed, month: '2026-09-01', ...state, history: { allocations: [], transactions: after } });
+  assert.deepEqual(again.months.find((m) => m.month === '2026-08-01'), undefined);
+  const corrected = parseBudgetWorkbook(await read(yearFile('4. מעקב הוצאות שנתי', [null, null, null, null, null, null, null, 1150], [])));
+  const fix = planImport({ parsed: corrected, month: '2026-09-01', ...state, history: { allocations: [], transactions: after } });
+  assert.deepEqual(fix.months.map((m) => [m.month, m.retire, m.adjustments.map((a) => a.amount)]), [['2026-08-01', [501], [-150]]]);
+});
+
+test('a «תקציב שנתי» that holds what was spent is read as what was spent, and says so', async () => {
+  // The household's real file: September in 2B is the «בפועל» column of «בקרה».
+  const base = householdFile();
+  const parsedBase = parseBudgetWorkbook(await read(base));
+  const actualOf = (n: string) => parsedBase.lines.find((l) => l.name === n)!.actual!;
+  const sept = (v: number) => [null, null, null, null, null, null, null, null, v];
+  const parsed = parseBudgetWorkbook(await read([
+    ...base,
+    sheetOf('2B. תקציב שנתי', [
+      [null, null, 'פירוט הוצאות', ...MONTH_HEAD],
+      [null, 'מכולת', 'מזון', ...sept(actualOf('מזון'))],
+      [null, null, 'קוסמטיקה', ...sept(actualOf('קוסמטיקה'))],
+      [null, 'סה"כ הוצאות'],
+    ]),
+  ]));
+  assert.equal(parsed.years![0]!.role, 'actual');
+  assert.ok(parsed.warnings.some((w) => w.includes('2B') && w.includes('ספטמבר')));
 });
 
 // ── Installments and payee rules ─────────────────────────────────────────
