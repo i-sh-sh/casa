@@ -735,6 +735,13 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
     }
   }
 
+  // The template asks for the rung in «שיקוף המצב» and nowhere else, and that
+  // sheet is the one most often left empty. Saying so is the difference
+  // between «everything is flexible» and «nobody has said yet».
+  if (out.lines.some((l) => l.section === 'expense') && !out.lines.some((l) => l.commitment)) {
+    out.warnings.push('בקובץ אין סיווג קשיחות/גמישות (בגיליון «שיקוף המצב» העמודה ריקה). סעיפים חדשים ייכנסו כגמישים, ואפשר לסווג אותם במסך התקציב תחת «לסווג את הסעיפים».');
+  }
+
   // Transaction sheets: a header row with an amount and a «סעיף» column.
   for (const { name, g } of grids) {
     if (control && name === control.name) continue;
