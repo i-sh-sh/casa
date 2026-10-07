@@ -7,7 +7,7 @@ import { monthKey } from '../../shared/money.js';
 import { writeXlsx } from '../../shared/xlsx.js';
 import {
   ADJUSTMENT_PAYEE, BUDGET_STYLES_XML, buildBudgetWorkbook, nameKey, planImport, summarizePlan, workbookFilename,
-  type ExistingCategory, type ExistingTransaction, type ImportPlan, type ImportSummary, type ParsedBudget, type ParsedLine,
+  type ExistingCategory, type ExistingTransaction, type ImportPlan, type ImportSummary, type ParsedBudget, type ParsedLine, type ParsedYear, type ParsedYearLine,
   type WorkbookData,
 } from '../../shared/budget-workbook.js';
 import type { Commitment } from '../../shared/types.js';
@@ -144,6 +144,26 @@ function readParsed(body: unknown): ParsedBudget {
         charged_on: optionalDate(t['charged_on'], 'תאריך חיוב'),
       };
     }),
+    years: (Array.isArray(b['years']) ? b['years'] : []).slice(0, 4).map((raw): ParsedYear => {
+      const y = (raw ?? {}) as Record<string, unknown>;
+      const yearLines = Array.isArray(y['lines']) ? y['lines'] : [];
+      if (yearLines.length > MAX_LINES) throw badRequest(`יותר מ-${MAX_LINES} סעיפים בגיליון שנתי`);
+      return {
+        sheet: str(y['sheet'], 'שם גיליון', { max: 80 }),
+        role: oneOf(y['role'], 'סוג גיליון', ['budget', 'actual'] as const),
+        lines: yearLines.map((rawLine): ParsedYearLine => {
+          const l = (rawLine ?? {}) as Record<string, unknown>;
+          const months = Array.isArray(l['months']) ? l['months'] : [];
+          if (months.length > 12) throw badRequest('יותר מ-12 חודשים בשורה');
+          return {
+            section: oneOf(l['section'], 'סוג שורה', ['income', 'expense'] as const),
+            group: optionalStr(l['group'], 'קטגוריה', 80),
+            name: str(l['name'], 'שם סעיף', { max: 80 }),
+            months: months.map((v) => amountOrNull(v, 'סכום חודשי')),
+          };
+        }),
+      };
+    }),
     sources: [],
     warnings: (Array.isArray(b['warnings']) ? b['warnings'] : []).slice(0, 20).map((w) => String(w).slice(0, 300)),
   };
@@ -171,7 +191,27 @@ async function planFor(parsed: ParsedBudget, month: string): Promise<ImportPlan>
     ),
     query<{ payee_key: string; category_id: number }>(`SELECT payee_key, category_id FROM payee_rules`),
   ]);
-  return planImport({ parsed, month, categories, groups: groups.map((g) => g.name), allocations, transactions, rules });
+  // The annual sheets reach the rest of the file's year; nothing is read for
+  // them unless the file has one.
+  const history = parsed.years?.length
+    ? await Promise.all([
+      query<{ month: string; category_id: number; allocated: number }>(
+        `SELECT to_char(month, 'YYYY-MM-DD') AS month, category_id, allocated
+           FROM budget_allocations
+          WHERE month >= date_trunc('year', $1::date) AND month < date_trunc('year', $1::date) + INTERVAL '1 year'`,
+        [month],
+      ),
+      query<ExistingTransaction>(
+        `SELECT id, to_char(occurred_on, 'YYYY-MM-DD') AS occurred_on, amount, payee, category_id
+           FROM transactions
+          WHERE deleted_at IS NULL AND transfer_id IS NULL
+            AND occurred_on >= date_trunc('year', $1::date)
+            AND occurred_on < date_trunc('year', $1::date) + INTERVAL '1 year'`,
+        [month],
+      ),
+    ]).then(([a, t]) => ({ allocations: a, transactions: t }))
+    : undefined;
+  return planImport({ parsed, month, categories, groups: groups.map((g) => g.name), allocations, transactions, rules, history });
 }
 
 /**
@@ -204,7 +244,8 @@ export async function importWorkbook(ctx: Ctx): Promise<ImportSummary> {
   const summary = summarizePlan(plan, account?.name ?? null);
   if (!apply) return summary;
 
-  const needsAccount = plan.transactions.length > 0 || plan.adjustments.length > 0;
+  const needsAccount = plan.transactions.length > 0 || plan.adjustments.length > 0
+    || plan.months.some((m) => m.adjustments.length > 0);
   if (needsAccount && !account) throw badRequest('אין חשבון לרשום אליו את העסקאות. הוסיפו חשבון בהגדרות.');
 
   // Groups first, then categories, then everything that points at them.
@@ -285,6 +326,29 @@ export async function importWorkbook(ctx: Ctx): Promise<ImportSummary> {
       [month, account!.id, idOf(a.category), a.amount, ADJUSTMENT_PAYEE,
         'ההפרש בין «בפועל» באקסל לעסקאות שבקובץ', ctx.user.email],
     );
+  }
+
+  for (const m of plan.months) {
+    for (const a of m.allocations) {
+      await query(
+        `INSERT INTO budget_allocations (month, category_id, allocated, updated_by, updated_at)
+         VALUES ($1::date, $2, $3, $4, NOW())
+         ON CONFLICT (month, category_id)
+         DO UPDATE SET allocated = EXCLUDED.allocated, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+        [m.month, idOf(a.category), a.allocated, ctx.user.email],
+      );
+    }
+    if (m.retire.length) {
+      await query(`UPDATE transactions SET deleted_at = NOW() WHERE id = ANY($1::int[]) AND deleted_at IS NULL`, [m.retire]);
+    }
+    for (const a of m.adjustments) {
+      await query(
+        `INSERT INTO transactions (occurred_on, account_id, category_id, amount, payee, note, paid_by, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
+        [m.month, account!.id, idOf(a.category), a.amount, ADJUSTMENT_PAYEE,
+          'ההפרש בין «בפועל» בגיליון השנתי לתנועות שנרשמו', ctx.user.email],
+      );
+    }
   }
 
   return { ...summary, applied: true };
