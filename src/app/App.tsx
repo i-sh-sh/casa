@@ -11,6 +11,7 @@ import { TransactionsScreen } from '../features/money/TransactionsScreen.js';
 import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
+import { AdminScreen } from '../features/admin/AdminScreen.js';
 import { HouseholdGate } from '../features/household/HouseholdGate.js';
 import { api } from '../lib/api.js';
 import { useVersion } from '../lib/version.js';
@@ -50,6 +51,7 @@ function Screen() {
   if (path.startsWith('/budget')) return <BudgetScreen />;
   if (path.startsWith('/transactions')) return <TransactionsScreen />;
   if (path.startsWith('/settings')) return <SettingsScreen />;
+  if (path.startsWith('/admin')) return <AdminScreen />;
   return (
     <div className="page">
       <div className="empty">

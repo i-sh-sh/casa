@@ -226,7 +226,7 @@ export default router([
         isolation: isolation
           ? { enforced: !!isolation.active && !isolation.unsafe_role, unsafe_role: !!isolation.unsafe_role }
           : null,
-        hint: missing.length ? 'הריצו מיגרציה: «הגדרות» ← «מסד הנתונים»' : null,
+        hint: missing.length ? 'הריצו מיגרציה: «הגדרות» ← «מסד הנתונים», או «ניהול המערכת» למפעיל' : null,
       };
     },
   },
