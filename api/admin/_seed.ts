@@ -93,24 +93,27 @@ INSERT INTO accounts (name, kind, sort_order) VALUES
   ('מזומן',    'cash', 1)
 ON CONFLICT DO NOTHING;
 
--- The pantry staples, with the minimum that puts them back on the list.
--- min_qty is the whole point: 0 means "we track it but never nag", and a
--- positive number means "when it drops under this, write it down for us".
+-- The pantry staples, tracked but not yet nagging: min_qty 0.
+-- A minimum on a product nobody has stocked means it is "below minimum" from
+-- the first second, and the next stock sync or nightly cron put all fifteen on
+-- the shopping list of a home that had not said it buys any of them. The
+-- minimums each staple should get live in shared/pantry.ts (SUGGESTED_MIN),
+-- and the home's setup checklist applies them to the ones it actually buys.
 INSERT INTO products (name, name_key, unit, category, min_qty, default_location, shelf_life_days) VALUES
-  ('חלב',          'חלב',          'ליטר',  'חלב וביצים',      2, 'מקרר',  7),
-  ('ביצים',        'ביצים',        'יח׳',   'חלב וביצים',     12, 'מקרר', 21),
-  ('קוטג׳',        'קוטג',         'יח׳',   'חלב וביצים',      1, 'מקרר', 14),
-  ('גבינה צהובה',  'גבינה צהובה',  'יח׳',   'חלב וביצים',      1, 'מקרר', 21),
-  ('לחם',          'לחם',          'יח׳',   'לחם ומאפים',      1, 'מזווה', 4),
-  ('אורז',         'אורז',         'ק״ג',   'יבשים ושימורים',  1, 'מזווה', NULL),
-  ('פסטה',         'פסטה',         'חבילה', 'יבשים ושימורים',  2, 'מזווה', NULL),
-  ('קמח',          'קמח',          'ק״ג',   'יבשים ושימורים',  1, 'מזווה', NULL),
-  ('סוכר',         'סוכר',         'ק״ג',   'יבשים ושימורים',  1, 'מזווה', NULL),
-  ('שמן זית',      'שמן זית',      'ליטר',  'יבשים ושימורים',  1, 'מזווה', NULL),
-  ('טונה',         'טונה',         'יח׳',   'יבשים ושימורים',  3, 'מזווה', NULL),
-  ('קפה',          'קפה',          'חבילה', 'יבשים ושימורים',  1, 'מזווה', NULL),
-  ('נייר טואלט',   'נייר טואלט',   'גליל',  'טואלטיקה',        6, 'אמבטיה', NULL),
-  ('סבון כלים',    'סבון כלים',    'יח׳',   'ניקיון',          1, 'ניקיון', NULL),
-  ('אבקת כביסה',   'אבקת כביסה',   'יח׳',   'ניקיון',          1, 'ניקיון', NULL)
+  ('חלב',          'חלב',          'ליטר',  'חלב וביצים',      0, 'מקרר',  7),
+  ('ביצים',        'ביצים',        'יח׳',   'חלב וביצים',      0, 'מקרר', 21),
+  ('קוטג׳',        'קוטג',         'יח׳',   'חלב וביצים',      0, 'מקרר', 14),
+  ('גבינה צהובה',  'גבינה צהובה',  'יח׳',   'חלב וביצים',      0, 'מקרר', 21),
+  ('לחם',          'לחם',          'יח׳',   'לחם ומאפים',      0, 'מזווה', 4),
+  ('אורז',         'אורז',         'ק״ג',   'יבשים ושימורים',  0, 'מזווה', NULL),
+  ('פסטה',         'פסטה',         'חבילה', 'יבשים ושימורים',  0, 'מזווה', NULL),
+  ('קמח',          'קמח',          'ק״ג',   'יבשים ושימורים',  0, 'מזווה', NULL),
+  ('סוכר',         'סוכר',         'ק״ג',   'יבשים ושימורים',  0, 'מזווה', NULL),
+  ('שמן זית',      'שמן זית',      'ליטר',  'יבשים ושימורים',  0, 'מזווה', NULL),
+  ('טונה',         'טונה',         'יח׳',   'יבשים ושימורים',  0, 'מזווה', NULL),
+  ('קפה',          'קפה',          'חבילה', 'יבשים ושימורים',  0, 'מזווה', NULL),
+  ('נייר טואלט',   'נייר טואלט',   'גליל',  'טואלטיקה',        0, 'אמבטיה', NULL),
+  ('סבון כלים',    'סבון כלים',    'יח׳',   'ניקיון',          0, 'ניקיון', NULL),
+  ('אבקת כביסה',   'אבקת כביסה',   'יח׳',   'ניקיון',          0, 'ניקיון', NULL)
 ON CONFLICT (household_id, name_key) DO NOTHING;
 `;

@@ -8,6 +8,7 @@ import { exportEverything, exportSheet, SHEET_NAMES } from './_export.js';
 import { pilotMetrics } from './_metrics.js';
 import { exportFilename } from '../../shared/csv.js';
 import { isOperator } from '../../shared/operators.js';
+import type { SetupFacts } from '../../shared/setup.js';
 import type { Role } from '../_lib/auth.js';
 
 const ROLES = ['owner', 'member', 'viewer', 'pending'] as const;
@@ -167,6 +168,29 @@ async function downloadSheet(ctx: Ctx) {
   ctx.res.send(csv);
 }
 
+async function setupFacts(ctx: Ctx): Promise<SetupFacts> {
+  const row = await one<Record<keyof SetupFacts, string>>(
+    `SELECT (SELECT count(*) FROM accounts WHERE kind = 'credit' AND archived_at IS NULL) AS credit_accounts,
+            (SELECT count(*) FROM budget_allocations
+              WHERE month = date_trunc('month', now())::date AND allocated <> 0)       AS allocations,
+            (SELECT count(*) FROM stock_entries WHERE qty > 0)                          AS stocked,
+            (SELECT count(*) FROM products WHERE min_qty > 0 AND archived_at IS NULL)  AS tracked,
+            (SELECT count(*) FROM household_members
+              WHERE household_id = $1 AND role <> 'pending')                           AS members,
+            (SELECT count(*) FROM household_invites
+              WHERE household_id = $1 AND accepted_at IS NULL AND expires_at > now())  AS invites`,
+    [ctx.user.household_id],
+  );
+  return {
+    credit_accounts: Number(row?.credit_accounts ?? 0),
+    allocations: Number(row?.allocations ?? 0),
+    stocked: Number(row?.stocked ?? 0),
+    tracked: Number(row?.tracked ?? 0),
+    members: Number(row?.members ?? 0),
+    invites: Number(row?.invites ?? 0),
+  };
+}
+
 export default router([
   { method: 'POST', path: 'migrate', bootstrap: true, handle: migrate },
   { method: 'POST', path: 'seed', role: 'owner', handle: seed },
@@ -196,6 +220,9 @@ export default router([
       return await pilotMetrics();
     },
   },
+  // The home's own setup checklist (shared/setup.ts). Counts only, the same
+  // facts the operator screen reads for every home.
+  { method: 'GET', path: 'setup', role: 'viewer', handle: setupFacts },
   {
     method: 'GET', path: 'health', bootstrap: true,
     handle: async () => {

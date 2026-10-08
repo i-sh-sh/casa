@@ -21,6 +21,8 @@ export interface SetupFacts {
   allocations: number;
   /** Stock entries with something in them: the pantry starts from what is there. */
   stocked: number;
+  /** Products with a minimum: the household said what it buys regularly. */
+  tracked: number;
   /** People in the home, not counting pending ones. */
   members: number;
   /** Open invites: the partner was asked, and the step is waiting on them. */
@@ -54,8 +56,10 @@ export function setupSteps(f: SetupFacts): SetupStep[] {
     {
       key: 'pantry',
       label: 'מה יש בבית',
-      done: f.stocked > 0,
-      status: f.stocked > 0 ? 'המזווה יודע מה יש' : 'כדי שרשימת הקניות תתחיל מהמציאות',
+      done: f.stocked > 0 || f.tracked > 0,
+      status: f.stocked > 0 || f.tracked > 0
+        ? 'המזווה יודע מה קונים קבוע'
+        : 'מה קונים באופן קבוע ומה יש עכשיו, כדי שרשימת הקניות תתחיל מהמציאות',
     },
     {
       key: 'partner',

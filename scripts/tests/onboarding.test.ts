@@ -78,3 +78,18 @@ test('the seed itself is idempotent, so furnishing twice is harmless', () => {
   const guarded = [...seed.matchAll(/ON CONFLICT[\s\S]*?DO NOTHING/g)].length;
   assert.equal(guarded, inserts, `${inserts} INSERTs but only ${guarded} guarded by ON CONFLICT`);
 });
+
+test('a new home\'s pantry nags about nothing until the home says what it buys', async () => {
+  // Every seeded staple used to carry a minimum with no stock behind it, so
+  // the first sync put fifteen products on the list of a couple who had not
+  // said they buy any. The minimums wait in SUGGESTED_MIN for the setup step.
+  const { SEED_SQL } = await import('../../api/admin/_seed.ts');
+  const { SUGGESTED_MIN } = await import('../../shared/pantry.ts');
+  const products = SEED_SQL.slice(SEED_SQL.indexOf('INSERT INTO products'));
+  const rows = [...products.matchAll(/\('[^']+',\s+'([^']+)',\s+'[^']+',\s+'[^']+',\s+(\d+),/g)];
+  assert.ok(rows.length >= 10, `expected the staples, found ${rows.length}`);
+  for (const [, key, min] of rows) {
+    assert.equal(Number(min), 0, `${key} is seeded with a minimum`);
+    assert.ok((SUGGESTED_MIN[key!] ?? 0) > 0, `${key} has no suggested minimum for the setup step`);
+  }
+});

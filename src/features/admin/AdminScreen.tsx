@@ -106,7 +106,7 @@ export function AdminScreen() {
 
           <p className="meta" style={{ marginTop: 'var(--s2)' }}>
             אין כאן סכומים, שמות עסקים או מוצרים, וגם לא בשאילתה שמזינה את המסך.
-            «שקט» = שבוע בלי שום פעולה. «ימים» = ימים שבהם נרשמה תנועה, בכל שבוע מאז שהבית נפתח.
+            «שקט» = שבוע בלי שום פעולה. «ימים עם תנועה» = בכמה ימים נרשמה תנועה בכל שבוע מאז שהבית נפתח; השבוע השלישי מודגש.
           </p>
         </section>
 
@@ -142,15 +142,18 @@ function HomeRow({ home }: { home: HouseholdMetrics }) {
           {missing.length > 0 && <> · חסר: {missing.map((s) => s.label).join(', ')}</>}
         </span>
 
-        {/* One entry per week that has begun. Week three is the pilot's
-            question, so it is named in words wherever it appears. */}
+        {/* One figure per week that has begun, oldest first, isolated left to
+            right so the dots stay between the numbers instead of being
+            reordered around them. Week three is the pilot's question, so it is
+            the one set in bold. */}
         <span className="meta" style={{ fontSize: 12, display: 'block' }}>
-          {home.active_days.slice(0, current + 1).map((days, w) => (
-            <span key={w} style={w === 2 ? { fontWeight: 700 } : undefined}>
-              {w > 0 && ' · '}
-              שבוע {w + 1}{w === current ? ' (עכשיו)' : ''}: <span className="n">{days}</span> {days === 1 ? 'יום' : 'ימים'}
-            </span>
-          ))}
+          ימים עם תנועה, לפי שבוע:{' '}
+          <bdi dir="ltr" className="n" style={{ whiteSpace: 'nowrap' }}>
+            {home.active_days.slice(0, current + 1).map((days, w) => (
+              <span key={w} style={w === 2 ? { fontWeight: 700 } : undefined}>{w > 0 && ' · '}{days}</span>
+            ))}
+          </bdi>
+          {current >= 2 ? '' : ` (עכשיו שבוע ${current + 1})`}
         </span>
       </span>
       <span className="meta n" style={{ fontSize: 12, textAlign: 'start', minWidth: 96 }}>

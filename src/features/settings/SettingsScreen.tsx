@@ -114,9 +114,11 @@ export function SettingsScreen() {
   );
 }
 
-function AccountForm({ onSaved }: { onSaved: () => void }) {
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState('bank');
+export function AccountForm({ onSaved, initialName = '', initialKind = 'bank' }: {
+  onSaved: () => void; initialName?: string; initialKind?: string;
+}) {
+  const [name, setName] = useState(initialName);
+  const [kind, setKind] = useState(initialKind);
   const [opening, setOpening] = useState('0');
 
   return (
@@ -305,7 +307,7 @@ function ExportSection({ isOwner }: { isOwner: boolean }) {
  * invitations sitting in a settings screen is a list of ways in. Losing one
  * costs a tap to mint another.
  */
-function InviteSection() {
+export function InviteSection() {
   const toast = useToast();
   const [link, setLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

@@ -119,7 +119,7 @@ async function activity(householdId: number, openedAt: string) {
     accounts: number; categories: number; transactions: number;
     transactions_7d: number; products: number; shopping_open: number;
     last_activity_at: string | null;
-    credit_accounts: number; allocations: number; stocked: number;
+    credit_accounts: number; allocations: number; stocked: number; tracked: number;
   } & Record<`week_${number}`, number>>(
     `SELECT (SELECT count(*) FROM accounts)                       AS accounts,
             (SELECT count(*) FROM categories)                     AS categories,
@@ -142,6 +142,8 @@ async function activity(householdId: number, openedAt: string) {
               WHERE month = date_trunc('month', now())::date
                 AND allocated <> 0)                               AS allocations,
             (SELECT count(*) FROM stock_entries WHERE qty > 0)    AS stocked,
+            (SELECT count(*) FROM products
+              WHERE min_qty > 0 AND archived_at IS NULL)          AS tracked,
             ${WEEKS.map((w) => `(SELECT count(DISTINCT (created_at AT TIME ZONE 'Asia/Jerusalem')::date)
                FROM transactions
               WHERE created_at >= $1::timestamptz + interval '${7 * w} days'
@@ -181,6 +183,7 @@ export async function pilotMetrics(): Promise<HouseholdMetrics[]> {
         credit_accounts: Number(counts?.credit_accounts ?? 0),
         allocations: Number(counts?.allocations ?? 0),
         stocked: Number(counts?.stocked ?? 0),
+        tracked: Number(counts?.tracked ?? 0),
         members: Number(home.members),
         invites: Number(home.invites),
       },
