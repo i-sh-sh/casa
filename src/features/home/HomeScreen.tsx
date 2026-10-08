@@ -1,8 +1,11 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { api } from '../../lib/api.js';
 import { Link } from '../../lib/router.js';
 import { useSession } from '../../lib/session.js';
-import { ErrorNote, Loading, useAsync } from '../../ui/kit.js';
+import { ErrorNote, Loading, useAsync, useToast } from '../../ui/kit.js';
+import { Icon } from '../../ui/Icon.js';
+import { TransactionSheet } from '../money/TransactionsScreen.js';
+import { SetupCard } from './SetupCard.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS, monthKey } from '@shared/money.js';
 import type { BudgetMonth, Product, RecurringBill, ShoppingItem } from '@shared/types.js';
@@ -43,6 +46,8 @@ function run(names: string[], max = 5): string {
 export function HomeScreen() {
   const { user } = useSession();
   const month = monthKey(new Date());
+  const toast = useToast();
+  const [adding, setAdding] = useState(false);
 
   const budget = useAsync(() => api.get<BudgetMonth>('/money/budget', { month }));
   const shopping = useAsync(() => api.get<ShoppingItem[]>('/shopping/items', { status: 'open' }));
@@ -84,9 +89,21 @@ export function HomeScreen() {
 
   return (
     <>
-      <TopBar title={`${greeting()}${user?.display_name ? `, ${user.display_name}` : ''}`} />
+      {/* Recording a spend is the one thing the pilot asks a couple to keep
+          doing, and it used to be three taps deep under the budget. It is one
+          tap from the first screen now, wherever the page is scrolled to. */}
+      <TopBar
+        title={`${greeting()}${user?.display_name ? `, ${user.display_name}` : ''}`}
+        action={(
+          <button className="btn btn-sm btn-primary" onClick={() => setAdding(true)}>
+            <Icon name="plus" size={16} /> הוצאה
+          </button>
+        )}
+      />
 
       <div className="page">
+        <SetupCard />
+
         {loading && <Loading />}
         {failure && <ErrorNote message={failure} onRetry={reloadAll} />}
 
@@ -151,6 +168,14 @@ export function HomeScreen() {
           />
         )}
       </div>
+
+      {adding && (
+        <TransactionSheet
+          transaction={null}
+          onClose={() => setAdding(false)}
+          onSaved={(message) => { setAdding(false); toast.show(message); budget.reload(); }}
+        />
+      )}
     </>
   );
 }

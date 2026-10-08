@@ -160,7 +160,7 @@ export function TransactionsScreen() {
  * the two of them — the one number in the app they are most likely to be
  * keeping score with, corrupted by the act of fixing a typo.
  */
-function TransactionSheet({ transaction, onClose, onSaved }: {
+export function TransactionSheet({ transaction, onClose, onSaved }: {
   transaction: Transaction | null;
   onClose: () => void;
   /** `day` is the date it landed on, so the screen can open that day. */
@@ -203,6 +203,9 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
 
   const usable = (categories.data ?? []).filter((c) => !c.archived_at && (kind === 'income' ? c.kind === 'income' : c.kind !== 'income'));
   const openAccounts = (accounts.data ?? []).filter((a) => !a.archived_at);
+  // Most of a household's spending is on a card, so a new spend starts there
+  // once one exists; the bank account the seed opens is the fallback.
+  const fallbackAccount = (kind === 'spend' ? openAccounts.find((a) => a.kind === 'credit') : undefined) ?? openAccounts[0];
 
   async function remove() {
     setDeleting(true);
@@ -230,7 +233,7 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
           const magnitude = Math.abs(Number(amount));
           const body = {
             occurred_on: occurredOn,
-            account_id: Number(accountId) || openAccounts[0]?.id,
+            account_id: Number(accountId) || fallbackAccount?.id,
             category_id: categoryId ? Number(categoryId) : null,
             amount: kind === 'income' ? magnitude : -magnitude,
             payee,
@@ -258,7 +261,7 @@ function TransactionSheet({ transaction, onClose, onSaved }: {
         </Field>
         <div className="row-2">
           <Field label="חשבון">
-            <select className="select" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+            <select className="select" value={accountId || String(fallbackAccount?.id ?? '')} onChange={(e) => setAccountId(e.target.value)}>
               {openAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </Field>

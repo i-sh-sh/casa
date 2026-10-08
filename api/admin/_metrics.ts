@@ -1,4 +1,5 @@
 import { one, query, withHousehold } from '../_lib/db.js';
+import { TRACKED_WEEKS, type SetupFacts } from '../../shared/setup.js';
 
 /**
  * What the pilot looks like from the outside, without looking inside.
@@ -57,6 +58,15 @@ export interface HouseholdMetrics {
   shopping_open: number;
   /** The most recent write of any kind. "Signed in" and "used it" are different. */
   last_activity_at: string | null;
+  /** What the setup checklist reads; the steps themselves are shared/setup.ts. */
+  setup: SetupFacts;
+  /**
+   * Days on which a transaction was recorded, per week since the home opened,
+   * oldest first. Days, not rows: one import writes forty transactions in a
+   * minute, and the pilot asks about a habit — whether a couple is still
+   * coming back in week three — which one evening of importing does not show.
+   */
+  active_days: number[];
 }
 
 interface Registry {
@@ -66,6 +76,7 @@ interface Registry {
   created_at: string;
   members: number;
   pending: number;
+  invites: number;
   last_seen_at: string | null;
 }
 
@@ -90,6 +101,9 @@ async function registry(): Promise<Registry[]> {
             h.created_at,
             count(m.email) FILTER (WHERE m.role <> 'pending') AS members,
             count(m.email) FILTER (WHERE m.role = 'pending')  AS pending,
+            (SELECT count(*) FROM household_invites i
+              WHERE i.household_id = h.id AND i.accepted_at IS NULL
+                AND i.expires_at > now())                     AS invites,
             max(u.last_seen_at)                               AS last_seen_at
        FROM households h
        LEFT JOIN household_members m ON m.household_id = h.id
@@ -100,12 +114,13 @@ async function registry(): Promise<Registry[]> {
 }
 
 /** Counts and dates for one home, from inside its own scope. */
-async function activity(householdId: number) {
+async function activity(householdId: number, openedAt: string) {
   return await withHousehold(householdId, async () => await one<{
     accounts: number; categories: number; transactions: number;
     transactions_7d: number; products: number; shopping_open: number;
     last_activity_at: string | null;
-  }>(
+    credit_accounts: number; allocations: number; stocked: number; tracked: number;
+  } & Record<`week_${number}`, number>>(
     `SELECT (SELECT count(*) FROM accounts)                       AS accounts,
             (SELECT count(*) FROM categories)                     AS categories,
             (SELECT count(*) FROM transactions
@@ -120,9 +135,24 @@ async function activity(householdId: number) {
               (SELECT max(created_at) FROM transactions),
               (SELECT max(created_at) FROM shopping_items),
               (SELECT max(created_at) FROM stock_log)
-            )                                                     AS last_activity_at`,
+            )                                                     AS last_activity_at,
+            (SELECT count(*) FROM accounts
+              WHERE kind = 'credit' AND archived_at IS NULL)      AS credit_accounts,
+            (SELECT count(*) FROM budget_allocations
+              WHERE month = date_trunc('month', now())::date
+                AND allocated <> 0)                               AS allocations,
+            (SELECT count(*) FROM stock_entries WHERE qty > 0)    AS stocked,
+            (SELECT count(*) FROM products
+              WHERE min_qty > 0 AND archived_at IS NULL)          AS tracked,
+            ${WEEKS.map((w) => `(SELECT count(DISTINCT (created_at AT TIME ZONE 'Asia/Jerusalem')::date)
+               FROM transactions
+              WHERE created_at >= $1::timestamptz + interval '${7 * w} days'
+                AND created_at <  $1::timestamptz + interval '${7 * (w + 1)} days') AS week_${w}`).join(',\n            ')}`,
+    [openedAt],
   ));
 }
+
+const WEEKS = Array.from({ length: TRACKED_WEEKS }, (_, i) => i);
 
 export async function pilotMetrics(): Promise<HouseholdMetrics[]> {
   const homes = await registry();
@@ -133,7 +163,7 @@ export async function pilotMetrics(): Promise<HouseholdMetrics[]> {
     // the reason to open this page is usually that something is already broken.
     let counts: Awaited<ReturnType<typeof activity>> = null;
     try {
-      counts = await activity(home.household_id);
+      counts = await activity(home.household_id, home.created_at);
     } catch (err) {
       console.error('metrics failed for household', home.household_id, err);
     }
@@ -149,6 +179,15 @@ export async function pilotMetrics(): Promise<HouseholdMetrics[]> {
       products: Number(counts?.products ?? 0),
       shopping_open: Number(counts?.shopping_open ?? 0),
       last_activity_at: counts?.last_activity_at ?? null,
+      setup: {
+        credit_accounts: Number(counts?.credit_accounts ?? 0),
+        allocations: Number(counts?.allocations ?? 0),
+        stocked: Number(counts?.stocked ?? 0),
+        tracked: Number(counts?.tracked ?? 0),
+        members: Number(home.members),
+        invites: Number(home.invites),
+      },
+      active_days: WEEKS.map((w) => Number(counts?.[`week_${w}`] ?? 0)),
     });
   }
 

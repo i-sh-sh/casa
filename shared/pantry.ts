@@ -161,3 +161,27 @@ export function decorateProduct(
     below_min: shouldRestock({ ...product, in_stock }),
   };
 }
+
+/**
+ * The minimum each seeded staple gets once the household says it buys it
+ * regularly (the pantry step of shared/setup.ts). Keyed by name_key, the same
+ * key the seed writes. Not in the seed itself: there it would put every
+ * staple on the shopping list of a home that has not said it buys any.
+ */
+export const SUGGESTED_MIN: Record<string, number> = {
+  'חלב': 2,
+  'ביצים': 12,
+  'קוטג': 1,
+  'גבינה צהובה': 1,
+  'לחם': 1,
+  'אורז': 1,
+  'פסטה': 2,
+  'קמח': 1,
+  'סוכר': 1,
+  'שמן זית': 1,
+  'טונה': 3,
+  'קפה': 1,
+  'נייר טואלט': 6,
+  'סבון כלים': 1,
+  'אבקת כביסה': 1,
+};
