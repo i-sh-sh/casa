@@ -67,7 +67,7 @@ export function normalizeName(value: unknown): string {
 
 export const nameKey = (value: unknown) => normalizeName(value).toLowerCase();
 
-const isTotal = (value: unknown) => /^סה"?כ/.test(normalizeName(value));
+const isTotal = (value: unknown) => /^(סה"?כ|סך הכל)/.test(normalizeName(value));
 
 /** Days since 1899-12-30, the epoch every spreadsheet program agrees on. */
 export function dateToSerial(iso: string): number {
@@ -736,8 +736,6 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
         });
       }
     }
-  } else {
-    out.warnings.push('לא נמצא גיליון «בקרה חודשית» עם העמודה «התקציב החודשי שלי». ייובאו רק עסקאות.');
   }
 
   // «שיקוף המצב» carries the one thing «בקרה» does not: which lines are rigid.
@@ -824,22 +822,35 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
     out.warnings.push('בקובץ אין סיווג קשיחות/גמישות (בגיליון «שיקוף המצב» העמודה ריקה). סעיפים חדשים ייכנסו כגמישים, ואפשר לסווג אותם במסך התקציב תחת «לסווג את הסעיפים».');
   }
 
-  // Transaction sheets: a header row with an amount and a «סעיף» column.
+  // Transaction sheets: a header row with a date, a business and an amount.
+  // The template's own sheet adds «סעיף»; the statement a card company exports
+  // (Max, Cal) has the same columns without it, and is read the same way —
+  // its rows are filed by what this household filed each business under
+  // before, in planImport.
+  let statement = false;
   for (const { name, g } of grids) {
     if (control && name === control.name) continue;
     for (let r = 1; r <= Math.min(g.maxRow, 30); r++) {
-      const lineCol = findCol(g, r, (t) => t.includes('סעיף'));
-      const amountCol = findCol(g, r, (t) => t.includes('סכום'));
       const payeeCol = findCol(g, r, (t) => t.includes('בית העסק') || t.includes('בית עסק'));
-      if (lineCol < 0 || amountCol < 0 || payeeCol < 0) continue;
+      // «סכום חיוב» is what left the account. A statement also carries
+      // «סכום עסקה» — the original, before installments and currency — and
+      // it often comes first.
+      let amountCol = findCol(g, r, (t) => t.includes('סכום חיוב'));
+      if (amountCol < 0) amountCol = findCol(g, r, (t) => t.includes('סכום'));
       let dateCol = findCol(g, r, (t) => t.includes('תאריך עסקה'));
-      if (dateCol < 0) dateCol = findCol(g, r, (t) => t.startsWith('תאריך'));
+      if (dateCol < 0) dateCol = findCol(g, r, (t) => t.startsWith('תאריך') && !t.includes('חיוב'));
+      if (payeeCol < 0 || amountCol < 0 || dateCol < 0) continue;
+      const lineCol = findCol(g, r, (t) => t.includes('סעיף'));
       const noteCol = findCol(g, r, (t) => t === 'הערות');
       const typeCol = findCol(g, r, (t) => t.includes('סוג עסקה'));
       const chargedCol = findCol(g, r, (t) => t.includes('תאריך חיוב'));
 
       out.sources.push(name.trim());
-      if (!out.month) {
+      if (lineCol < 0) statement = true;
+      // A statement's title names the billing month, which is the month after
+      // most of its purchases; only the template's own title names the month
+      // the rows belong to.
+      if (!out.month && lineCol >= 0) {
         for (let tr = 1; tr < r && !out.month; tr++) out.month = monthFromText(g.text(0, tr));
       }
 
@@ -848,11 +859,11 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
         if (isTotal(g.text(0, row)) || isTotal(g.text(payeeCol, row))) break;
         const amount = numberOf(g.get(amountCol, row));
         const payee = g.text(payeeCol, row);
-        const date = dateCol >= 0 ? dateOf(g.get(dateCol, row)) : null;
+        const date = dateOf(g.get(dateCol, row));
         if (amount == null || amount === 0) continue;
         if (!date) { skipped++; continue; }
         const note = noteCol >= 0 ? g.text(noteCol, row) : '';
-        const line = g.text(lineCol, row);
+        const line = lineCol >= 0 ? g.text(lineCol, row) : '';
         const type = typeCol >= 0 ? g.text(typeCol, row) : '';
         const installment = /תשלום/.test(note) || type.includes('תשלומים') ? installmentOf(note) : null;
         out.transactions.push({
@@ -865,6 +876,11 @@ export function parseBudgetWorkbook(sheets: ReadSheet[]): ParsedBudget {
       if (skipped) out.warnings.push(`בגיליון «${name.trim()}» ${skipped} שורות בלי תאריך שאפשר לקרוא — דולגו.`);
       break;
     }
+  }
+  if (!control) {
+    out.warnings.push(statement
+      ? 'זה פירוט עסקאות בלי סעיפים, כמו הקובץ מחברת האשראי. ייובאו רק העסקאות: בית עסק שכבר שויך פעם יירשם לאותו סעיף, והשאר ייכנסו בלי סעיף.'
+      : 'לא נמצא גיליון «בקרה חודשית» עם העמודה «התקציב החודשי שלי». ייובאו רק עסקאות.');
   }
 
   // A month the file never names is the month most of its transactions fall in.
@@ -1205,6 +1221,8 @@ export interface ImportSummary {
   transactions_total: number;
   duplicates: number;
   by_payee: number;
+  /** New rows that go in with no category: nothing in the file or in the rules said where. */
+  unfiled: number;
   installments: number;
   adjustments: { name: string; amount: number }[];
   retire: number;
@@ -1229,6 +1247,7 @@ export function summarizePlan(plan: ImportPlan, accountName: string | null, appl
     transactions_total: cents(plan.transactions.reduce((s, t) => s + t.amount, 0)),
     duplicates: plan.duplicates,
     by_payee: plan.byPayee,
+    unfiled: plan.transactions.filter((t) => !t.category).length,
     installments: plan.transactions.filter((t) => t.installment_no).length,
     adjustments: plan.adjustments.map((a) => ({ name: a.name, amount: a.amount })),
     retire: plan.retire.length,

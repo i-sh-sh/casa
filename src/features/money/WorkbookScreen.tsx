@@ -82,7 +82,7 @@ function ImportSection() {
     try {
       const p = parseBudgetWorkbook(await readXlsx(new Uint8Array(await file.arrayBuffer())));
       if (!p.lines.length && !p.transactions.length) {
-        throw new Error('לא מצאתי בקובץ גיליון «בקרה חודשית» או גיליון עסקאות עם עמודת «סעיף». זה הקובץ הנכון?');
+        throw new Error('לא מצאתי בקובץ גיליון «בקרה חודשית» או גיליון עסקאות עם תאריך, בית עסק וסכום. זה הקובץ הנכון?');
       }
       const m = p.month ?? monthKey(new Date());
       setParsed(p);
@@ -92,7 +92,14 @@ function ImportSection() {
       // A file that is not a zip at all says so in English from deep inside
       // the reader; what a person needs is which file, and what was expected.
       const message = err instanceof Error ? err.message : '';
-      setError(/zip|xlsx/i.test(message) ? 'הקובץ הזה אינו קובץ אקסל (xlsx).' : message || 'לא הצלחתי לקרוא את הקובץ.');
+      // An .xls is the older binary format some card companies still export;
+      // Excel saves it as .xlsx in one step, and this reader does not need a
+      // second parser for it.
+      setError(/zip|xlsx/i.test(message)
+        ? (/\.xls$/i.test(file.name)
+          ? 'זה קובץ xls בפורמט הישן. פתחו אותו באקסל, שמרו בשם כ-xlsx, ובחרו את הקובץ החדש.'
+          : 'הקובץ הזה אינו קובץ אקסל (xlsx).')
+        : message || 'לא הצלחתי לקרוא את הקובץ.');
     } finally {
       setReading(false);
     }
@@ -117,15 +124,16 @@ function ImportSection() {
     <section className="section">
       <h2>ייבוא</h2>
       <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
-        נקרא מהקובץ הגיליון «בקרה חודשית» (סעיפים, תקציב ובפועל) וגיליון העסקאות. לפני
-        שנכתב משהו תראו מה ייווסף. ייבוא חוזר של אותו קובץ לא מכפיל כלום.
+        קובץ התקציב שלכם: נקרא הגיליון «בקרה חודשית» (סעיפים, תקציב ובפועל) וגיליון העסקאות.
+        פירוט עסקאות מחברת האשראי (Max, כאל) בפורמט xlsx: נקראות העסקאות, וכל בית עסק שכבר
+        שויך פעם נרשם לאותו סעיף. לפני שנכתב משהו תראו מה ייווסף. ייבוא חוזר של אותו קובץ לא מכפיל כלום.
       </p>
 
       <label className="btn btn-block" style={{ position: 'relative' }}>
         {reading ? 'קורא…' : fileName ? `קובץ אחר במקום ${fileName}` : 'בחירת קובץ אקסל'}
         <input
           type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
           style={{ position: 'absolute', width: 1, height: 1, opacity: 0 }}
           onChange={(e) => { void choose(e.target.files?.[0]); e.target.value = ''; }}
         />
@@ -232,6 +240,13 @@ function Preview({ summary, sources }: { summary: ImportSummary; sources: string
       label: 'שויכו לפי בית העסק',
       value: `${summary.by_payee} עסקאות`,
       detail: 'לא היה להן סעיף בקובץ, והן נרשמו לסעיף שבו בית העסק נרשם בפעם הקודמת.',
+    });
+  }
+  if (summary.unfiled) {
+    lines.push({
+      label: 'בלי סעיף',
+      value: `${summary.unfiled} עסקאות`,
+      detail: 'בית העסק לא שויך עד היום לשום סעיף. אחרי הייבוא אפשר לשייך במסך התנועות, ומהפעם הבאה הוא יירשם לבד.',
     });
   }
   if (summary.installments) {

@@ -466,3 +466,64 @@ test('installments go out with «תשלומים» and come back as installments'
   assert.equal(t.installments_total, 3);
   assert.equal(t.charged_on, '2026-10-15');
 });
+
+// ── A card company's statement ───────────────────────────────────────────
+
+/**
+ * The shape Max exports: three title rows, the billing month in words, a
+ * second amount column, a total at the bottom. The household's own
+ * «עסקאות» sheet was copied from exactly this, minus the «סעיף» column.
+ */
+const statement = () => [sheetOf('עסקאות במועד החיוב', [
+  ['כל המשתמשים (1)'],
+  ['עסקאות לחיוב באוקטובר 2026'],
+  [],
+  ['תאריך עסקה', 'שם בית העסק', 'קטגוריה', '4 ספרות אחרונות של כרטיס האשראי', 'סוג עסקה', 'סכום עסקה מקורי', 'סכום חיוב', 'תאריך חיוב', 'הערות'],
+  ['14-09-2026', 'רמי לוי גוש עציון', 'מזון וצריכה', '1234', 'רגילה', 158.26, 158.26, '15-10-2026', ''],
+  ['18-08-2026', 'סאני תקשורת', 'שירותי תקשורת', '1234', 'תשלומים', 633.99, 211.33, '15-10-2026', 'תשלום 2 מתוך 3'],
+  ['22-09-2026', 'פרחי הארץ', 'שונות', '1234', 'רגילה', 89.9, 89.9, '15-10-2026', ''],
+  ['', 'סך הכל', '', '', '', '', 459.49, '', ''],
+])];
+
+test('a card statement is read without a «סעיף» column, by its charged amount', async () => {
+  const parsed = parseBudgetWorkbook(await read(statement()));
+  assert.equal(parsed.transactions.length, 3, 'the total row is not a purchase');
+  const sunny = parsed.transactions.find((t) => t.payee === 'סאני תקשורת')!;
+  assert.equal(sunny.amount, -211.33, '«סכום חיוב», not the original 633.99');
+  assert.equal(sunny.installment_no, 2);
+  assert.equal(sunny.charged_on, '2026-10-15');
+  assert.equal(parsed.transactions[0]!.line, null);
+  // The title names the billing month; the purchases are September's.
+  assert.equal(parsed.month, '2026-09-01');
+  assert.ok(parsed.warnings.some((w) => w.includes('חברת האשראי')));
+  assert.deepEqual(parsed.warnings.filter((w) => w.includes('דולגו')), []);
+});
+
+test('a statement files known businesses, leaves the rest unfiled, and imports once', async () => {
+  const parsed = parseBudgetWorkbook(await read(statement()));
+  const categories: ExistingCategory[] = [{ id: 4, name: 'מזון', group_name: 'מזון', kind: 'spending', commitment: 'flexible' }];
+  const rules = [{ payee_key: 'רמי לוי גוש עציון', category_id: 4 }];
+  const plan = planImport({ parsed, month: '2026-09-01', categories, groups: ['מזון'], allocations: [], transactions: [], rules });
+  assert.deepEqual(plan.transactions.find((t) => t.payee === 'רמי לוי גוש עציון')!.category, { id: 4 });
+  assert.equal(plan.byPayee, 1);
+  assert.equal(plan.transactions.filter((t) => !t.category).length, 2);
+  assert.deepEqual(plan.unmatched, []);
+  assert.equal(plan.newCategories.length, 0, 'a statement creates no budget structure');
+
+  const existing: ExistingTransaction[] = plan.transactions.map((t, i) => ({
+    id: i + 1, occurred_on: t.occurred_on, amount: t.amount, payee: t.payee, category_id: null,
+  }));
+  const again = planImport({ parsed, month: '2026-09-01', categories, groups: ['מזון'], allocations: [], transactions: existing, rules });
+  assert.equal(again.transactions.length, 0);
+  assert.equal(again.duplicates, 3);
+});
+
+test('when «סכום עסקה» comes before «סכום חיוב», the charge is still the one read', async () => {
+  const parsed = parseBudgetWorkbook(await read([sheetOf('פירוט', [
+    ['תאריך עסקה', 'שם בית עסק', 'סכום עסקה', 'סכום חיוב', 'תאריך חיוב'],
+    ['03/09/2026', 'Amazon', 412.5, 0, '10/10/2026'],
+    ['05/09/2026', 'שופרסל', 120, 120, '10/10/2026'],
+  ])]));
+  // A row with nothing charged on this statement is not a payment yet.
+  assert.deepEqual(parsed.transactions.map((t) => [t.payee, t.amount]), [['שופרסל', -120]]);
+});
