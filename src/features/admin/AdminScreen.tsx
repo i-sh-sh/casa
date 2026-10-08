@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { api } from '../../lib/api.js';
-import { Link } from '../../lib/router.js';
+import { Link, useRouter } from '../../lib/router.js';
 import { useSession } from '../../lib/session.js';
-import { ErrorNote, Loading, useAsync } from '../../ui/kit.js';
+import { ErrorNote, Loading, useAsync, useToast } from '../../ui/kit.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { DatabaseSection } from '../settings/SettingsScreen.js';
 import { setupDone, setupSteps, weekIndex, TRACKED_WEEKS, type SetupFacts } from '@shared/setup.js';
@@ -22,6 +23,12 @@ interface HouseholdMetrics {
   last_activity_at: string | null;
   setup: SetupFacts;
   active_days: number[];
+  is_test: boolean;
+}
+
+interface TestingState {
+  built: boolean;
+  personas: { key: string; display_name: string; purpose: string; homes: string[] }[];
 }
 
 /** «לפני 3 ימים», or «אף פעם» — the only two answers this screen needs. */
@@ -75,8 +82,11 @@ export function AdminScreen() {
   }
 
   const rows = homes.data ?? [];
-  const silent = rows.filter(quiet).length;
-  const thisWeek = rows.filter((h) => h.transactions_7d > 0).length;
+  // Test homes are listed, so the operator can see what a reset left, but they
+  // are not the pilot and do not count towards it.
+  const pilot = rows.filter((h) => !h.is_test);
+  const silent = pilot.filter(quiet).length;
+  const thisWeek = pilot.filter((h) => h.transactions_7d > 0).length;
 
   return (
     <>
@@ -88,9 +98,9 @@ export function AdminScreen() {
 
       <div className="page">
         <section className="section">
-          <h2>הבתים <span className="count">· {rows.length}</span></h2>
+          <h2>הבתים <span className="count">· {pilot.length}</span></h2>
 
-          {rows.length > 0 && (
+          {pilot.length > 0 && (
             <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
               {thisWeek} רשמו תנועה השבוע · {silent} שקטים יותר משבוע
             </p>
@@ -102,7 +112,7 @@ export function AdminScreen() {
           </div>
 
           {homes.error && <ErrorNote message={homes.error} onRetry={homes.reload} />}
-          {!homes.loading && rows.length === 0 && <p className="meta">אין עדיין בתים.</p>}
+          {!homes.loading && pilot.length === 0 && <p className="meta">אין עדיין בתים.</p>}
 
           <p className="meta" style={{ marginTop: 'var(--s2)' }}>
             אין כאן סכומים, שמות עסקים או מוצרים, וגם לא בשאילתה שמזינה את המסך.
@@ -110,9 +120,120 @@ export function AdminScreen() {
           </p>
         </section>
 
+        <TestingSection onRebuilt={homes.reload} />
+
         <DatabaseSection />
       </div>
     </>
+  );
+}
+
+/**
+ * The test people: who they are, which home each is in, and the way into each.
+ *
+ * Rebuilding asks once before it acts, in two steps rather than a browser
+ * dialog for the same reason the transaction delete does. It cannot reach a
+ * real home (api/admin/_testing.ts says why), but it does throw away whatever
+ * the operator did in the test ones, which may be the thing they were about to
+ * look at.
+ */
+function TestingSection({ onRebuilt }: { onRebuilt: () => void }) {
+  const { stepIn } = useSession();
+  const { navigate } = useRouter();
+  const toast = useToast();
+  const state = useAsync(() => api.get<TestingState>('/admin/testing'));
+  const [busy, setBusy] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  async function rebuild() {
+    setBusy('rebuild');
+    setFailure(null);
+    try {
+      await api.post('/admin/testing/rebuild');
+      toast.show('משתמשי הבדיקה נבנו מחדש');
+      setConfirming(false);
+      state.reload();
+      onRebuilt();
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : 'הבנייה נכשלה');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function enter(persona: string) {
+    setBusy(persona);
+    setFailure(null);
+    try {
+      await stepIn(persona);
+      navigate('/');
+    } catch (err) {
+      setFailure(err instanceof Error ? err.message : 'הכניסה נכשלה');
+      setBusy(null);
+    }
+  }
+
+  const built = state.data?.built ?? false;
+
+  return (
+    <section className="section">
+      <h2>משתמשי בדיקה</h2>
+      <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
+        ארבעה אנשים מדומים, כדי לעבור על האפליקציה אחרי כל עדכון בלי חשבונות Google נוספים.
+        נכנסים בתור אחד מהם, ופס כחול למעלה מחזיר לחשבון שלכם.
+        הכתובות שלהם מסתיימות ב-<span className="n">casa.invalid</span>, אז אף אחד אמיתי לא יכול להיכנס בתורם.
+      </p>
+
+      {state.loading && <Loading />}
+      {state.error && <ErrorNote message={state.error} onRetry={state.reload} />}
+
+      {built && (
+        <div className="rows">
+          {state.data!.personas.map((p) => (
+            <div key={p.key} className="row" style={{ alignItems: 'flex-start', paddingBlock: 'var(--s3)' }}>
+              <span className="grow">
+                <span className="title" style={{ display: 'block' }}>{p.display_name}</span>
+                <span className="meta" style={{ display: 'block' }}>{p.purpose}</span>
+                <span className="meta" style={{ fontSize: 12, display: 'block' }}>
+                  {p.homes.length ? p.homes.join(', ') : 'בלי בית'}
+                </span>
+              </span>
+              <button className="btn btn-sm" disabled={busy !== null} onClick={() => void enter(p.key)}>
+                {busy === p.key ? 'רגע…' : 'כניסה'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {failure && <ErrorNote message={failure} />}
+
+      <div style={{ marginTop: 'var(--s3)' }}>
+        {!built && !state.loading ? (
+          <button className="btn btn-block btn-primary" disabled={busy !== null} onClick={() => void rebuild()}>
+            {busy === 'rebuild' ? 'בונים…' : 'להקים את משתמשי הבדיקה'}
+          </button>
+        ) : confirming ? (
+          <>
+            <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
+              כל מה שנעשה בבתי הבדיקה יימחק, ונועה ועומר יחזרו להיות בלי בית.
+              הבית של דנה ויואב ייבנה מחדש עם חודשיים של נתונים עד היום. בתים אמיתיים לא נוגעים.
+            </p>
+            <div className="row-2">
+              <button className="btn btn-red" disabled={busy !== null} onClick={() => void rebuild()}>
+                {busy === 'rebuild' ? 'בונים…' : 'לבנות מחדש'}
+              </button>
+              <button className="btn" disabled={busy !== null} onClick={() => setConfirming(false)}>ביטול</button>
+            </div>
+          </>
+        ) : built ? (
+          <button className="btn btn-block" disabled={busy !== null} onClick={() => setConfirming(true)}>
+            לאפס ולבנות מחדש
+          </button>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -126,7 +247,9 @@ function HomeRow({ home }: { home: HouseholdMetrics }) {
       <span className="grow">
         <span className="title" style={{ display: 'block' }}>
           {home.name}
-          {quiet(home) && <span className="mark mark-red" style={{ marginInlineStart: 8 }}>שקט</span>}
+          {home.is_test
+            ? <span className="mark mark-blue" style={{ marginInlineStart: 8 }}>בדיקה</span>
+            : quiet(home) && <span className="mark mark-red" style={{ marginInlineStart: 8 }}>שקט</span>}
         </span>
         <span className="meta n" style={{ fontSize: 12, display: 'block' }}>{home.owner_email ?? '—'}</span>
         <span className="meta" style={{ fontSize: 12, display: 'block' }}>

@@ -1,5 +1,6 @@
 import { one, query, withHousehold } from '../_lib/db.js';
 import { TRACKED_WEEKS, type SetupFacts } from '../../shared/setup.js';
+import { isTestEmail } from '../../shared/testing.js';
 
 /**
  * What the pilot looks like from the outside, without looking inside.
@@ -67,6 +68,8 @@ export interface HouseholdMetrics {
    * coming back in week three — which one evening of importing does not show.
    */
   active_days: number[];
+  /** Opened by a test person (shared/testing.ts), so not part of the pilot. */
+  is_test: boolean;
 }
 
 interface Registry {
@@ -74,6 +77,7 @@ interface Registry {
   name: string;
   owner_email: string | null;
   created_at: string;
+  created_by: string | null;
   members: number;
   pending: number;
   invites: number;
@@ -99,6 +103,7 @@ async function registry(): Promise<Registry[]> {
             h.name,
             min(m.email) FILTER (WHERE m.role = 'owner')      AS owner_email,
             h.created_at,
+            h.created_by,
             count(m.email) FILTER (WHERE m.role <> 'pending') AS members,
             count(m.email) FILTER (WHERE m.role = 'pending')  AS pending,
             (SELECT count(*) FROM household_invites i
@@ -108,7 +113,7 @@ async function registry(): Promise<Registry[]> {
        FROM households h
        LEFT JOIN household_members m ON m.household_id = h.id
        LEFT JOIN users u             ON u.email = m.email
-      GROUP BY h.id, h.name, h.created_at
+      GROUP BY h.id, h.name, h.created_at, h.created_by
       ORDER BY h.id`,
   );
 }
@@ -168,8 +173,10 @@ export async function pilotMetrics(): Promise<HouseholdMetrics[]> {
       console.error('metrics failed for household', home.household_id, err);
     }
 
+    const { created_by, ...listed } = home;
     out.push({
-      ...home,
+      ...listed,
+      is_test: isTestEmail(created_by),
       members: Number(home.members),
       pending: Number(home.pending),
       accounts: Number(counts?.accounts ?? 0),

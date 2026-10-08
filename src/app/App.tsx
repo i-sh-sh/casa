@@ -12,6 +12,7 @@ import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
 import { AdminScreen } from '../features/admin/AdminScreen.js';
+import { TestingBar } from '../features/admin/TestingBar.js';
 import { AcceptInvite, HouseholdGate, type InviteInfo } from '../features/household/HouseholdGate.js';
 import { api } from '../lib/api.js';
 import { useVersion } from '../lib/version.js';
@@ -208,7 +209,14 @@ function StuckDialog({ onReload }: { onReload: () => void }) {
   );
 }
 
+/** Every state of the app, with the test person strip above it when there is one. */
 function Shell() {
+  const { testing } = useSession();
+  if (!testing) return <States />;
+  return <><TestingBar /><States /></>;
+}
+
+function States() {
   const { user, loading, signOut, refresh } = useSession();
   const { stuck, reload } = useVersion();
   const [openItems, setOpenItems] = useState(0);

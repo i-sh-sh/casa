@@ -689,3 +689,22 @@ a { color: inherit; }
   line-height: 1;
 }
 .gate p { color: var(--ink-2); margin: var(--s3) 0 var(--s6); font-size: 15px; }
+
+/* ── Test person strip ───────────────────────────────────────────────── */
+
+/* Blue, the app's only other ink: it marks "not your own data" without
+   borrowing the red that means overdrawn. */
+.testbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  padding: var(--s2) var(--s4);
+  background: var(--blue-wash);
+  border-bottom: 1px solid var(--rule-blue);
+  color: var(--blue);
+  font-size: 14px;
+}
+.testbar-label { font-weight: 700; letter-spacing: 0.04em; }
+.testbar-who { flex: 1; min-width: 0; max-width: 220px; }
+.testbar-failure { flex-basis: 100%; color: var(--red); }
