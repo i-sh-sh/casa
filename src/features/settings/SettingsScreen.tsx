@@ -337,13 +337,29 @@ export function InviteSection() {
     }
   };
 
+  // The message is the first thing the partner sees, before the app, so it is
+  // written as the person sending it would write it and says what the link is.
+  // A bare URL from a stranger's domain is the kind people do not tap.
+  const share = async () => {
+    if (!link) return;
+    const text = `פתחתי לנו בית בקאסה: התקציב, המזווה ורשימת הקניות, פנקס אחד לשנינו. הקישור תקף לשבוע: ${link}`;
+    if (navigator.share) {
+      try { await navigator.share({ text }); return; } catch (err) {
+        // Closing the share sheet is a choice, not a failure.
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+      }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
+
   return (
     <section className="section">
       <h2>הזמנה</h2>
       {link ? (
         <>
           <p className="meta n" style={{ fontSize: 13, wordBreak: 'break-all', marginBottom: 'var(--s3)' }}>{link}</p>
-          <button className="btn btn-primary btn-block btn-sm" onClick={() => void copy()}>העתקת הקישור</button>
+          <button className="btn btn-primary btn-block" onClick={() => void share()}>שליחה בוואטסאפ או בהודעה</button>
+          <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s2)' }} onClick={() => void copy()}>העתקת הקישור</button>
           <p className="meta" style={{ marginTop: 'var(--s2)' }}>
             תקף שבוע, ולפעם אחת. הקישור לא נשמר בשום מקום שאפשר לחזור אליו — אם הוא אבד, צרו חדש.
           </p>

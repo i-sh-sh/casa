@@ -39,13 +39,30 @@ export interface SetupStep {
   status: string;
 }
 
+/**
+ * The partner comes first. Everything after it (which card, how much for
+ * food) is a decision the two of them make together, and the one person who
+ * opened the home making it alone is how a shared budget becomes one person's.
+ *
+ * A card counts as done with one, because some couples share one. When there
+ * are fewer cards than people the status says so, since an expense on the
+ * wrong card is the error the import cannot fix afterwards.
+ */
 export function setupSteps(f: SetupFacts): SetupStep[] {
   return [
+    {
+      key: 'partner',
+      label: 'בן או בת הזוג',
+      done: f.members > 1,
+      status: f.members > 1 ? 'הצטרפו' : f.invites > 0 ? 'ההזמנה נשלחה, עוד לא הצטרפו' : 'קישור אחד בוואטסאפ, וכל השאר מחליטים יחד',
+    },
     {
       key: 'card',
       label: 'כרטיס האשראי',
       done: f.credit_accounts > 0,
-      status: f.credit_accounts > 0 ? 'נוסף' : 'כדי שהוצאות באשראי יירשמו לחשבון הנכון',
+      status: f.credit_accounts === 0
+        ? 'כדי שהוצאות באשראי יירשמו לחשבון הנכון'
+        : wantsAnotherCard(f) ? 'יש כרטיס אחד. אם לכל אחד מכם כרטיס משלו, הוסיפו גם את השני' : 'נוסף',
     },
     {
       key: 'budget',
@@ -61,13 +78,12 @@ export function setupSteps(f: SetupFacts): SetupStep[] {
         ? 'המזווה יודע מה קונים קבוע'
         : 'מה קונים באופן קבוע ומה יש עכשיו, כדי שרשימת הקניות תתחיל מהמציאות',
     },
-    {
-      key: 'partner',
-      label: 'בן או בת הזוג',
-      done: f.members > 1,
-      status: f.members > 1 ? 'הצטרפו' : f.invites > 0 ? 'ההזמנה נשלחה, עוד לא הצטרפו' : 'קישור הזמנה אחד',
-    },
   ];
+}
+
+/** Fewer cards than people: the second person probably has one of their own. */
+export function wantsAnotherCard(f: SetupFacts): boolean {
+  return f.credit_accounts > 0 && f.credit_accounts < f.members;
 }
 
 export function setupDone(steps: SetupStep[]): number {

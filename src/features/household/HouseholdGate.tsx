@@ -4,6 +4,7 @@ import { useSession } from '../../lib/session.js';
 import { ErrorNote, useAsync } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import type { Household } from '@shared/types.js';
+import { afterPrefix } from '@shared/hebrew.js';
 
 /**
  * What a signed-in person sees before they belong anywhere.
@@ -88,9 +89,32 @@ function RunMigration({ missing, onDone }: { missing: string[]; onDone: () => vo
   );
 }
 
+/** Google's first name, as the starting guess for what the couple calls each other. */
+export const firstName = (user: { display_name: string | null; name: string | null } | null): string =>
+  user?.display_name ?? user?.name?.trim().split(/\s+/)[0] ?? '';
+
+/**
+ * «איך לקרוא לך» — one field, already filled in.
+ *
+ * It is what «מי שילם», the greeting and the balance between the two of them
+ * show. Google's name is the account's («Yossi Cohen», or a work address's
+ * formal one); the first word of it is the usual answer, and the field is
+ * there for when it is not.
+ */
+function NameField({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="field" style={{ textAlign: 'start' }}>
+      <span>איך לקרוא לך</span>
+      <input className="input" value={value} onChange={(e) => onChange(e.target.value)} maxLength={40} autoComplete="given-name" />
+    </label>
+  );
+}
+
 /** The person who starts. */
 function OpenHome({ onOpened }: { onOpened: () => void }) {
-  const [name, setName] = useState('');
+  const { user } = useSession();
+  const [me, setMe] = useState(() => firstName(user));
+  const [name, setName] = useState(() => (firstName(user) ? `הבית של ${firstName(user)}` : ''));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,7 +123,7 @@ function OpenHome({ onOpened }: { onOpened: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      await api.post('/auth/household', { name: name.trim() });
+      await api.post('/auth/household', { name: name.trim(), display_name: me.trim() || undefined });
       onOpened();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'לא הצלחנו לפתוח את הבית');
@@ -114,6 +138,7 @@ function OpenHome({ onOpened }: { onOpened: () => void }) {
       </p>
       <hr className="rule" style={{ margin: '0 0 var(--s5)' }} />
       <form onSubmit={(e) => { e.preventDefault(); void open(); }}>
+        <NameField value={me} onChange={setMe} />
         <label className="field" style={{ textAlign: 'start' }}>
           <span>שם הבית</span>
           <input
@@ -121,7 +146,6 @@ function OpenHome({ onOpened }: { onOpened: () => void }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="הבית שלנו"
-            autoFocus
             maxLength={60}
           />
         </label>
@@ -131,7 +155,7 @@ function OpenHome({ onOpened }: { onOpened: () => void }) {
         </button>
       </form>
       <p className="meta" style={{ marginTop: 'var(--s4)' }}>
-        אחר כך תוכלו להזמין את בן או בת הזוג בקישור אחד.
+        מיד אחר כך: קישור אחד לבן או לבת הזוג, בוואטסאפ.
       </p>
     </>
   );
@@ -144,13 +168,21 @@ function OpenHome({ onOpened }: { onOpened: () => void }) {
  * household" asks a person to trust a stranger's URL with their budget; one
  * that says «הבית של דנה ויואב» is either obviously right or obviously wrong.
  */
-function AcceptInvite({ token, onJoined }: { token: string; onJoined: () => void }) {
-  const [invite, setInvite] = useState<{ household_name: string; role: string; spent: boolean } | null>(null);
+export interface InviteInfo { household_name: string; role: string; spent: boolean; invited_by: string | null }
+
+export function AcceptInvite({ token, onJoined, currentHome, onStay }: {
+  token: string; onJoined: () => void;
+  /** Set when the person already has a home of their own: the link must still work. */
+  currentHome?: string; onStay?: () => void;
+}) {
+  const { user } = useSession();
+  const [me, setMe] = useState(() => firstName(user));
+  const [invite, setInvite] = useState<InviteInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api.get<{ household_name: string; role: string; spent: boolean }>('/auth/invite', { token })
+    api.get<InviteInfo>('/auth/invite', { token })
       .then(setInvite)
       .catch((err: Error) => setError(err.message));
   }, [token]);
@@ -159,7 +191,7 @@ function AcceptInvite({ token, onJoined }: { token: string; onJoined: () => void
     setBusy(true);
     setError(null);
     try {
-      await api.post('/auth/join', { token });
+      await api.post('/auth/join', { token, display_name: me.trim() || undefined });
       // The token is in the URL, and it is spent now. Leaving it there would
       // make a refresh look like a second, failed attempt.
       history.replaceState(null, '', location.pathname);
@@ -170,16 +202,25 @@ function AcceptInvite({ token, onJoined }: { token: string; onJoined: () => void
     }
   };
 
-  if (error && !invite) return <p style={{ color: 'var(--red)' }}>{error}</p>;
+  // Somebody who already has a home must always have a way back to it, even
+  // from a link that turned out to be dead.
+  const back = onStay && currentHome && (
+    <button className="btn btn-block" style={{ marginTop: 'var(--s4)' }} onClick={onStay}>
+      חזרה ל{afterPrefix(currentHome)}
+    </button>
+  );
+
+  if (error && !invite) return <><p style={{ color: 'var(--red)' }}>{error}</p>{back}</>;
   if (!invite) return <p className="meta">בודקים את ההזמנה…</p>;
 
   if (invite.spent) {
     return (
       <>
         <p>
-          ההזמנה ל<b>{invite.household_name}</b> כבר נוצלה או פגה.
+          ההזמנה ל<b>{afterPrefix(invite.household_name)}</b> כבר נוצלה או פגה.
         </p>
         <p className="meta">בקשו קישור חדש ממי שהזמין אתכם.</p>
+        {back}
       </>
     );
   }
@@ -191,16 +232,27 @@ function AcceptInvite({ token, onJoined }: { token: string; onJoined: () => void
           headline and a button would ask them to hand their household budget to
           a name they half-recognise on a link somebody sent them. */}
       <p>
-        הוזמנתם ל<b>{invite.household_name}</b>
-        {invite.role === 'viewer' && ' — בתור צופים, בלי הרשאת שינוי'}.
+        {invite.invited_by ? <>{invite.invited_by} הזמין אתכם ל</> : 'הוזמנתם ל'}<b>{afterPrefix(invite.household_name)}</b>
+        {invite.role === 'viewer' && ', בתור צופים, בלי הרשאת שינוי'}.
         <br />
         קאסה היא פנקס אחד לבית: התקציב, המזווה ורשימת הקניות, לשניכם.
       </p>
+      {currentHome && (
+        <p className="meta">
+          אתם כבר ב<b>{afterPrefix(currentHome)}</b>. אחרי ההצטרפות תעברו ל{afterPrefix(invite.household_name)}, ותוכלו לחזור מההגדרות.
+        </p>
+      )}
       <hr className="rule" style={{ margin: '0 0 var(--s5)' }} />
+      <NameField value={me} onChange={setMe} />
       {error && <p style={{ color: 'var(--red)', fontSize: 15, marginBottom: 'var(--s3)' }}>{error}</p>}
       <button className="btn btn-primary btn-block" onClick={() => void accept()} disabled={busy}>
-        {busy ? 'רגע…' : 'הצטרפות'}
+        {busy ? 'רגע…' : `הצטרפות ל${afterPrefix(invite.household_name)}`}
       </button>
+      {onStay && (
+        <button className="btn btn-quiet btn-block" style={{ marginTop: 'var(--s2)' }} onClick={onStay}>
+          להישאר ב{afterPrefix(currentHome ?? '')}
+        </button>
+      )}
       <p className="meta" style={{ marginTop: 'var(--s4)' }}>
         {invite.role === 'viewer'
           ? 'תראו את הכול ולא תשנו כלום.'

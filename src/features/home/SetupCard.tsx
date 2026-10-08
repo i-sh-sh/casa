@@ -5,7 +5,8 @@ import { useSession } from '../../lib/session.js';
 import { AsyncForm, ErrorNote, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
 import { AccountForm, InviteSection } from '../settings/SettingsScreen.js';
 import { SUGGESTED_MIN } from '@shared/pantry.js';
-import { setupDone, setupSteps, type SetupFacts, type SetupStepKey } from '@shared/setup.js';
+import { setupDone, setupSteps, wantsAnotherCard, type SetupFacts, type SetupStepKey } from '@shared/setup.js';
+import { firstName } from '../household/HouseholdGate.js';
 import type { Product } from '@shared/types.js';
 
 const hiddenKey = (household: number) => `casa-setup-hidden:${household}`;
@@ -60,10 +61,12 @@ export function SetupCard() {
             <span className="grow">
               <span className="title" style={{ display: 'block' }}>{step.label}</span>
               <span className="meta">
-                {step.done ? `נעשה · ${step.status}` : step.status}
+                {step.done && !(step.key === 'card' && wantsAnotherCard(facts.data!)) ? `נעשה · ${step.status}` : step.status}
               </span>
             </span>
-            {!step.done && <StepAction step={step.key} isOwner={isOwner} onOpen={setOpen} />}
+            {(!step.done || (step.key === 'card' && wantsAnotherCard(facts.data!))) && (
+              <StepAction step={step.key} isOwner={isOwner} onOpen={setOpen} />
+            )}
           </div>
         ))}
       </div>
@@ -74,7 +77,9 @@ export function SetupCard() {
 
       {open === 'card' && (
         <Sheet title="כרטיס אשראי" onClose={close}>
-          <AccountForm onSaved={close} initialName="כרטיס אשראי" initialKind="credit" />
+          {/* Named for whoever is adding it: in a home with two cards, «כרטיס
+              אשראי» twice is a choice nobody can make at the till. */}
+          <AccountForm onSaved={close} initialName={firstName(user) ? `הכרטיס של ${firstName(user)}` : 'כרטיס אשראי'} initialKind="credit" />
         </Sheet>
       )}
       {open === 'pantry' && (
