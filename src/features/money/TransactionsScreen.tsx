@@ -5,6 +5,7 @@ import { useSession } from '../../lib/session.js';
 import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
+import { MonthStepper } from '../../ui/MonthStepper.js';
 import { formatILS, monthKey } from '@shared/money.js';
 import { nameKey } from '@shared/budget-workbook.js';
 import type { Account, Category, Transaction } from '@shared/types.js';
@@ -47,14 +48,7 @@ export function TransactionsScreen() {
       />
 
       <div className="page">
-        <Field label="חודש">
-          <input
-            className="input"
-            type="month"
-            value={month.slice(0, 7)}
-            onChange={(e) => setMonth(e.target.value ? `${e.target.value}-01` : month)}
-          />
-        </Field>
+        <MonthStepper month={month} onChange={setMonth} />
 
         {transactions.loading && !transactions.data && <Loading />}
         {transactions.error && <ErrorNote message={transactions.error} onRetry={transactions.reload} />}

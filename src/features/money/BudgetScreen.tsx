@@ -5,12 +5,15 @@ import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, use
 import { Explainable } from '../../ui/Explain.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
+import { Bar, type Tone } from '../../ui/Bar.js';
+import { MonthStepper } from '../../ui/MonthStepper.js';
+import { FlowHero } from './FlowHero.js';
 import {
   COMMITMENTS, COMMITMENT_LABELS, COMMITMENT_NOTES,
-  formatILS, monthKey, nextMonth, previousMonth,
+  formatILS, monthKey,
 } from '@shared/money.js';
 import {
-  explainAhead, explainAllocated, explainCommitment, explainEnvelopeSpent, explainFlow,
+  explainAhead, explainCommitment, explainEnvelopeSpent, explainFlow,
   explainGroup, explainIncome, explainSpent, explainUnbudgeted, explainUnfiled, explainUnplanned,
 } from '@shared/explain.js';
 import type { BudgetMonth, Category, Commitment, EnvelopeRow, Transaction } from '@shared/types.js';
@@ -36,14 +39,6 @@ function useDetails(month: string) {
     }
     return cache.current.p;
   };
-}
-
-const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
-
-function monthLabel(month: string): string {
-  const [year, m] = month.split('-').map(Number) as [number, number];
-  const name = MONTHS[m - 1] ?? month;
-  return year === new Date().getFullYear() ? name : `${name} ${year}`;
 }
 
 /**
@@ -82,87 +77,57 @@ export function BudgetScreen() {
     return acc;
   }, {});
 
-  const short = (data?.flow.monthly ?? 0) < 0;
-
   return (
     <>
       <TopBar
         title="תקציב"
-        subtitle={monthLabel(month)}
         action={<Link to="/transactions" className="btn btn-sm">תנועות</Link>}
       />
 
       <div className="page">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--s2)' }}>
-          <button className="btn btn-quiet" onClick={() => setMonth(nextMonth(month))} aria-label="החודש הבא">
-            <Icon name="back" size={18} />
-          </button>
-          <div style={{ flex: 1, textAlign: 'center' }} className="label">{monthLabel(month)}</div>
-          <button className="btn btn-quiet" onClick={() => setMonth(previousMonth(month))} aria-label="החודש הקודם" style={{ transform: 'scaleX(-1)' }}>
-            <Icon name="back" size={18} />
-          </button>
-        </div>
+        <MonthStepper month={month} onChange={setMonth} />
 
         {budget.loading && !data && <Loading />}
         {budget.error && <ErrorNote message={budget.error} onRetry={budget.reload} />}
 
         {data && (
           <>
-            <div className="hero">
-              <div className="label">תזרים חודשי</div>
-              <Explainable inline className="" style={{ display: 'block' }} explain={() => explainFlow(data)}>
-                <span className={`figure ${short ? 'over' : ''}`} style={{ display: 'block' }}>{formatILS(data.flow.monthly, { sign: true })}</span>
-              </Explainable>
-              <div className="meta" style={{ marginTop: 'var(--s2)' }}>
-                נכנס{' '}
-                <Explainable inline className="" explain={async () => { const d = await details(); return explainIncome(data, d.txs, d.incomeIds); }}>
-                  <span className="n">{formatILS(data.flow.income)}</span>
+            <FlowHero
+              flow={data.flow}
+              wrap={(key, node) => (
+                <Explainable
+                  inline
+                  className=""
+                  style={key === 'flow' ? { display: 'block' } : undefined}
+                  explain={key === 'flow'
+                    ? () => explainFlow(data)
+                    : key === 'spent'
+                      ? () => explainSpent(data)
+                      : async () => { const d = await details(); return explainIncome(data, d.txs, d.incomeIds); }}
+                >
+                  {node}
                 </Explainable>
-                {' · הוצא '}
-                <Explainable inline className="" explain={() => explainSpent(data)}>
-                  <span className="n">{formatILS(data.flow.spent)}</span>
-                </Explainable>
-              </div>
-            </div>
+              )}
+            />
 
-            <section className="section">
-              <h2>החודש · ₪</h2>
-              <div className="rows">
-                <Line label="נכנס" value={data.income} explain={async () => { const d = await details(); return explainIncome(data, d.txs, d.incomeIds); }} />
-                <Line label="תוקצב" value={data.allocated} explain={() => explainAllocated(data)} />
-                {/* Income minus what the budget claims. Not «to be budgeted»
-                    across all of history — just this month against itself. */}
-                <Line label="לא תוקצב" value={data.to_be_budgeted} explain={() => explainUnbudgeted(data)} />
-              </div>
-            </section>
-
-            <Ladder data={data} onClassify={() => setClassifying(true)} />
-
-            {/* Spent with no category, so in no envelope. Named rather than
-                merely counted: it is in the month's flow either way, and the
-                only way to see which rows they are is to be told they exist. */}
-            {data.unfiled !== 0 && (
-              <section className="section">
-                <h2>לא שויך לקטגוריה</h2>
-                <div className="rows">
-                  <Explainable style={{ borderBottom: 0 }} explain={async () => { const d = await details(); return explainUnfiled(data, d.txs, d.incomeIds); }}>
-                    <span className="grow meta">
-                      יצא מהחשבון ונספר בתזרים, אבל לא נכנס לשום מעטפה. השיוך נעשה במסך התנועות.
-                    </span>
-                    <span className="n amount">{formatILS(data.unfiled, { symbol: false })}</span>
-                  </Explainable>
-                </div>
-                <Link to="/transactions" className="btn btn-sm" style={{ marginTop: 'var(--s2)' }}>לפתוח את התנועות ולשייך</Link>
-              </section>
-            )}
-
-            <Ahead data={data} />
+            <Warnings data={data} details={details} />
 
             {data.envelopes.length === 0 && (
               <Empty
                 headline="אין עדיין קטגוריות"
                 hint="קטגוריה היא שם וסכום חודשי שאתם קובעים. אפשר להוסיף מ«הגדרות»."
               />
+            )}
+
+            {/* The groups come straight after the month's figure: they are
+                what this screen is opened to change. The analysis that used
+                to sit between them — three rows of totals, the ladder, its
+                notes — is below, where it is read once a month. */}
+            {data.envelopes.length > 0 && (
+              <div className="label" style={{ marginTop: 'var(--s5)', display: 'flex' }}>
+                <span style={{ flex: 1 }}>מעטפות</span>
+                <span>נשאר · ₪</span>
+              </div>
             )}
 
             {Object.entries(groups).map(([groupName, envelopes]) => {
@@ -182,7 +147,7 @@ export function BudgetScreen() {
                   key={groupName}
                   id={groupName}
                   title={groupName}
-                  count={<>· נשאר ₪</>}
+                  count={<span className="n">{envelopes.length}</span>}
                   // Shut, the group still says what it comes to: the same
                   // number that sits under the double rule when it is open.
                   mark={over > 0 ? <span className="mark mark-red">חריגה</span> : null}
@@ -210,6 +175,10 @@ export function BudgetScreen() {
                 </Fold>
               );
             })}
+
+            <Split data={data} details={details} onClassify={() => setClassifying(true)} />
+
+            <Ahead data={data} />
           </>
         )}
 
@@ -247,21 +216,32 @@ export function BudgetScreen() {
   );
 }
 
+const RUNG_TONES: Record<Commitment, Tone> = {
+  rigid: 'tone-1', flexible: 'tone-2', liquid: 'tone-ink3', unplanned: 'tone-3',
+};
+
 /**
- * Where the give is.
+ * Where the month's income went, drawn as one bar.
  *
- * Not a figure the app invented — a regrouping of the household's own
- * allocations by how much control they have over each one. «לצמצם הוצאות» is
- * not advice; «מתוך ₪9,700, ₪3,570 קשיחות ו-₪1,450 נזילות» is, because it
- * names the part that can actually move.
+ * It replaces two sections that said the same thing in two vocabularies: three
+ * rows of totals (נכנס, תוקצב, לא תוקצב) and the ladder, four rows each with a
+ * meter, a percentage and a sentence. Here the bar is the income, split by the
+ * rung of everything allocated out of it, with what is left unallocated as the
+ * blank paper at the end. One glance answers both old questions — how much is
+ * spoken for, and how much of that could move.
  *
- * It draws nothing before the first allocation: a ladder of four zeroes teaches
- * people to skip the section, and by the time it has something to say they have
- * learned to.
+ * Every rung is still the household's own allocations regrouped, nothing
+ * invented, and every figure still opens its slip. The rung descriptions moved
+ * to the classify sheet, which is the one place they are needed.
  */
-function Ladder({ data, onClassify }: { data: BudgetMonth; onClassify: () => void }) {
-  const { commitments, unplanned } = data;
-  if (commitments.every((c) => c.allocated === 0)) return null;
+function Split({ data, details, onClassify }: {
+  data: BudgetMonth;
+  details: () => Promise<Details>;
+  onClassify: () => void;
+}) {
+  const { commitments } = data;
+  if (data.allocated === 0 && data.income === 0) return null;
+  const free = Math.max(0, data.to_be_budgeted);
   // Everything on one rung is almost never a decision; it is the default
   // every new category gets (an import from a file whose «קשיחות» column was
   // left empty does exactly this). Said once, with the way to fix it.
@@ -269,56 +249,99 @@ function Ladder({ data, onClassify }: { data: BudgetMonth; onClassify: () => voi
 
   return (
     <section className="section">
-      <h2>איפה יש גמישות <span className="count">· הוקצה ₪</span></h2>
+      <h2>לאן הולכת ההכנסה <span className="count">· ₪</span></h2>
+      <Bar
+        label="חלוקת ההכנסה לפי סוג ההוצאה"
+        parts={[
+          ...COMMITMENTS.map((key) => ({
+            value: commitments.find((c) => c.commitment === key)?.allocated ?? 0,
+            tone: RUNG_TONES[key],
+          })),
+          // The paper left blank: income nothing has claimed yet.
+          { value: free, tone: 'tone-blank' as Tone },
+        ]}
+      />
       <div className="rows">
         {COMMITMENTS.map((key) => {
           const slice = commitments.find((c) => c.commitment === key);
-          if (!slice) return null;
+          if (!slice || slice.allocated === 0) return null;
           return (
-            <Explainable key={key} explain={() => explainCommitment(data, key)}>
-              <span className="grow">
-                <span className="title" style={{ display: 'block' }}>{COMMITMENT_LABELS[key]}</span>
-                <span className="meter" style={{ maxWidth: 180 }} aria-hidden="true">
-                  <i style={{ width: `${Math.round(slice.share * 100)}%` }} />
-                </span>
-                <span className="meta">{COMMITMENT_NOTES[key]}</span>
-              </span>
-              <span className="margin-col n">{Math.round(slice.share * 100)}%</span>
+            <Explainable key={key} style={{ minHeight: 44 }} explain={() => explainCommitment(data, key)}>
+              <span className={`swatch ${RUNG_TONES[key]}`} />
+              <span className="grow">{COMMITMENT_LABELS[key]}</span>
+              <span className="n meta" style={{ fontSize: 13 }}>{Math.round(slice.share * 100)}%</span>
               <span className="n amount">{formatILS(slice.allocated, { symbol: false })}</span>
             </Explainable>
           );
         })}
+        {/* Income minus what the budget claims. Not «to be budgeted»
+            across all of history — just this month against itself. */}
+        <Explainable style={{ minHeight: 44 }} explain={() => explainUnbudgeted(data)}>
+          <span className="swatch tone-blank" />
+          <span className="grow">{data.to_be_budgeted < 0 ? 'תוקצב מעבר להכנסה' : 'לא תוקצב'}</span>
+          <span className={`n amount ${data.to_be_budgeted < 0 ? 'over' : ''}`}>{formatILS(data.to_be_budgeted, { symbol: false })}</span>
+        </Explainable>
       </div>
+      <hr className="rule-2" />
+      <Explainable style={{ minHeight: 44, borderBottom: 0 }} explain={async () => { const d = await details(); return explainIncome(data, d.txs, d.incomeIds); }}>
+        <span className="grow label">נכנס החודש</span>
+        <span className="n amount" style={{ fontWeight: 600 }}>{formatILS(data.income, { symbol: false })}</span>
+      </Explainable>
 
       {oneRung && (
         <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-          כל הסעיפים מסווגים כרגע באותה דרגה. כנראה שאף אחד עוד לא סיווג אותם.
+          כל הסעיפים באותה דרגה. כנראה שעוד לא סווגו.
         </p>
       )}
-      <button type="button" className="btn btn-block" style={{ marginTop: 'var(--s3)' }} onClick={onClassify}>
+      <button type="button" className="btn btn-sm btn-block" style={{ marginTop: 'var(--s3)' }} onClick={onClassify}>
         לסווג את הסעיפים
       </button>
+    </section>
+  );
+}
 
-      {!unplanned.meets_floor && (
-        <div className="note-error" role="status">
-          <div style={{ display: 'flex', gap: 'var(--s2)', alignItems: 'flex-start' }}>
-            <Icon name="alert" size={18} />
-            <div style={{ flex: 1 }}>
-              לבלת״מ מוקצים{' '}
+/**
+ * The two things the month is asking for, each in one line.
+ *
+ * Both used to be whole sections — a heading, a paragraph and a button — and
+ * the paragraph was the same every month. What changes is the figure, so the
+ * figure is what stays, with the verb that fixes it.
+ */
+function Warnings({ data, details }: { data: BudgetMonth; details: () => Promise<Details> }) {
+  const { unplanned } = data;
+  const lowFloor = !unplanned.meets_floor && data.allocated > 0;
+  if (!lowFloor && data.unfiled === 0) return null;
+
+  return (
+    <div className="rows">
+      {lowFloor && (
+        <div className="row" style={{ minHeight: 48, color: 'var(--red)' }}>
+          <Icon name="alert" size={18} />
+          <span className="grow" style={{ lineHeight: 1.4 }}>
+            <span style={{ display: 'block', fontSize: 15 }}>
+              לא צפויות{' '}
               <Explainable inline className="" explain={() => explainUnplanned(data)}>
                 <span className="n">{Math.round(unplanned.share * 100)}%</span>
-              </Explainable>{' '}מהחודש.
-              מומלץ <span className="n">5%</span> לפחות — חסרים{' '}
-              <span className="n">{formatILS(unplanned.shortfall)}</span>.
-              <div style={{ marginTop: 'var(--s1)', fontSize: 14 }}>
-                תמיד יש בלת״מ. חתונה, רופא שיניים, טלפון שנשבר — אף פעם לא אותו דבר,
-                ואף פעם לא באמת הפתעה ש<em>משהו</em> קרה.
-              </div>
-            </div>
-          </div>
+              </Explainable>
+              {' '}מהחודש
+            </span>
+            <span style={{ fontSize: 13 }}>מומלץ <span className="n">5%</span> לפחות · חסר</span>
+          </span>
+          <span className="n amount over">{formatILS(-unplanned.shortfall, { symbol: false })}</span>
         </div>
       )}
-    </section>
+      {/* Spent with no category, so in no envelope. Named rather than
+          merely counted: it is in the month's flow either way, and the
+          only way to see which rows they are is to be told they exist. */}
+      {data.unfiled !== 0 && (
+        <Explainable style={{ minHeight: 48 }} explain={async () => { const d = await details(); return explainUnfiled(data, d.txs, d.incomeIds); }}>
+          <span className="grow" style={{ fontSize: 15 }}>
+            לא שויך לקטגוריה · <Link to="/transactions" style={{ color: 'var(--blue)' }}>לשייך</Link>
+          </span>
+          <span className="n amount">{formatILS(data.unfiled, { symbol: false })}</span>
+        </Explainable>
+      )}
+    </div>
   );
 }
 
@@ -357,15 +380,6 @@ function Ahead({ data }: { data: BudgetMonth }) {
         <span className="n amount">{formatILS(ahead.total, { symbol: false })}</span>
       </Explainable>
     </section>
-  );
-}
-
-function Line({ label, value, explain }: { label: string; value: number; explain: Parameters<typeof Explainable>[0]['explain'] }) {
-  return (
-    <Explainable style={{ minHeight: 48 }} explain={explain}>
-      <span className="grow label">{label}</span>
-      <span className={`n amount ${value < 0 ? 'over' : ''}`}>{formatILS(value)}</span>
-    </Explainable>
   );
 }
 

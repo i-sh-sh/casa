@@ -3,6 +3,7 @@ import { api } from '../../lib/api.js';
 import { Link } from '../../lib/router.js';
 import { AsyncForm, ErrorNote, Field, useAsync } from '../../ui/kit.js';
 import { TopBar } from '../../ui/TopBar.js';
+import { MonthStepper } from '../../ui/MonthStepper.js';
 import { formatILS, monthKey } from '@shared/money.js';
 import { readXlsx } from '@shared/xlsx.js';
 import { MONTHS, parseBudgetWorkbook, type ImportSummary, type ParsedBudget } from '@shared/budget-workbook.js';
@@ -33,21 +34,12 @@ export function WorkbookScreen() {
       <div className="page">
         <section className="section">
           <h2>ייצוא</h2>
-          <Field label="חודש">
-            <input
-              className="input"
-              type="month"
-              value={month.slice(0, 7)}
-              onChange={(e) => setMonth(e.target.value ? `${e.target.value}-01` : month)}
-            />
-          </Field>
-          <a className="btn btn-primary btn-block" href={`/api/money/workbook?month=${month}`}>
+          <MonthStepper month={month} onChange={setMonth} />
+          <a className="btn btn-primary btn-block" style={{ marginTop: 'var(--s3)' }} href={`/api/money/workbook?month=${month}`}>
             הורדת {monthLabel(month)}
           </a>
           <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-            שישה גיליונות, באותם שמות כמו באקסל שלכם: שיקוף מצב, תקציב חודשי, תקציב שנתי,
-            בקרה חודשית, עסקאות החודש ומעקב שנתי. הסכומים הם מה שנרשם כאן; הממוצעים,
-            המצטברים והיתרות הם נוסחאות של האקסל.
+            שישה גיליונות בשמות של האקסל שלכם. הסכומים מכאן, הנוסחאות של האקסל.
           </p>
         </section>
 
@@ -123,10 +115,8 @@ function ImportSection() {
   return (
     <section className="section">
       <h2>ייבוא</h2>
-      <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
-        קובץ התקציב שלכם: נקרא הגיליון «בקרה חודשית» (סעיפים, תקציב ובפועל) וגיליון העסקאות.
-        פירוט עסקאות מחברת האשראי (Max, כאל) בפורמט xlsx: נקראות העסקאות, וכל בית עסק שכבר
-        שויך פעם נרשם לאותו סעיף. לפני שנכתב משהו תראו מה ייווסף. ייבוא חוזר של אותו קובץ לא מכפיל כלום.
+      <p className="meta" style={{ margin: 'var(--s2) 0 var(--s3)' }}>
+        קובץ התקציב שלכם, או פירוט עסקאות מחברת האשראי (xlsx). קודם רואים מה ייכנס, וייבוא חוזר לא מכפיל.
       </p>
 
       <label className="btn btn-block" style={{ position: 'relative' }}>
@@ -143,19 +133,13 @@ function ImportSection() {
 
       {parsed && preview && (
         <div style={{ marginTop: 'var(--s4)' }}>
-          <Field label="החודש שבקובץ">
-            <input
-              className="input"
-              type="month"
-              value={(month ?? '').slice(0, 7)}
-              disabled={preview.applied}
-              onChange={(e) => {
-                const m = e.target.value ? `${e.target.value}-01` : month;
-                setMonth(m);
-                void refresh(m, accountId);
-              }}
-            />
-          </Field>
+          <div className="label" style={{ marginBottom: 'var(--s1)' }}>החודש שבקובץ</div>
+          <MonthStepper
+            month={month ?? monthKey(new Date())}
+            disabled={preview.applied}
+            onChange={(m) => { setMonth(m); void refresh(m, accountId); }}
+          />
+          <div style={{ height: 'var(--s4)' }} />
 
           {(preview.transactions > 0 || preview.adjustments.length > 0) && (
             <Field label="לרשום את העסקאות בחשבון">
