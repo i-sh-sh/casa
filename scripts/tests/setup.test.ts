@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { setupDone, setupSteps, weekIndex, type SetupFacts } from '../../shared/setup.ts';
+import { setupDone, setupSteps, wantsAnotherCard, weekIndex, type SetupFacts } from '../../shared/setup.ts';
 
 // The checklist a new home sees and the column the operator reads are the same
 // function, so these hold both: a step is done when the thing exists, however
@@ -13,13 +13,14 @@ test('a home fresh from the seed has done nothing yet', () => {
   // amounts; products with no stock. None of that is the household's own.
   const steps = setupSteps(fresh);
   assert.equal(setupDone(steps), 0);
-  assert.deepEqual(steps.map((s) => s.key), ['card', 'budget', 'pantry', 'partner']);
+  // The partner first: the rest are decisions the two of them make together.
+  assert.deepEqual(steps.map((s) => s.key), ['partner', 'card', 'budget', 'pantry']);
 });
 
 test('each step is read from the data, not from a flag', () => {
   const steps = setupSteps({ credit_accounts: 1, allocations: 12, stocked: 3, tracked: 0, members: 2, invites: 0 });
   assert.equal(setupDone(steps), 4);
-  assert.match(steps[1]!.status, /12 סעיפים/);
+  assert.match(steps.find((s) => s.key === 'budget')!.status, /12 סעיפים/);
 });
 
 test('an invite that was sent and not accepted is said, and not counted as done', () => {
@@ -39,4 +40,14 @@ test('weeks are counted from the day the home opened, the first being 0', () => 
 test('saying what is bought regularly sets the pantry up, even with nothing in the cupboard', () => {
   const pantry = setupSteps({ ...fresh, tracked: 4 }).find((s) => s.key === 'pantry')!;
   assert.equal(pantry.done, true);
+});
+
+test('one card between two people is done, and still asks about the second', () => {
+  const two = { ...fresh, credit_accounts: 1, members: 2 };
+  const card = setupSteps(two).find((s) => s.key === 'card')!;
+  assert.equal(card.done, true, 'some couples share one card');
+  assert.equal(wantsAnotherCard(two), true);
+  assert.match(card.status, /השני/);
+  assert.equal(wantsAnotherCard({ ...two, credit_accounts: 2 }), false);
+  assert.equal(wantsAnotherCard({ ...fresh, credit_accounts: 1 }), false, 'alone, one card is the whole answer');
 });

@@ -93,3 +93,23 @@ test('a new home\'s pantry nags about nothing until the home says what it buys',
     assert.ok((SUGGESTED_MIN[key!] ?? 0) > 0, `${key} has no suggested minimum for the setup step`);
   }
 });
+
+// Council 0004: the second person in a couple is where signing up broke.
+
+test('an invite link is answered even by somebody who already has a home', () => {
+  // HouseholdGate only appears for people with no home, so the Shell has to
+  // look for the link itself, before it renders the app.
+  const app = code(readFileSync(join(root, 'src/app/App.tsx'), 'utf8'));
+  const shell = app.slice(app.indexOf('function Shell'));
+  const invite = shell.indexOf('if (invite)');
+  assert.ok(invite > 0, 'Shell checks for ?invite');
+  assert.ok(invite > shell.indexOf('household_id === null'), 'after the no-home gate');
+  assert.ok(invite < shell.indexOf('className="shell"'), 'before the app renders');
+  assert.match(shell, /<AcceptInvite[\s\S]*?currentHome=/);
+});
+
+test('joining and opening a home both keep what the person is called', () => {
+  const route = code(readFileSync(join(root, 'api/auth/[action].ts'), 'utf8'));
+  const calls = route.match(/await rememberName\(req, email\)/g) ?? [];
+  assert.equal(calls.length, 2);
+});

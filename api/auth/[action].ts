@@ -7,7 +7,7 @@ import {
 } from '../_lib/auth.js';
 import { badRequest, forbidden, handler, json, notFound, unauthorized } from '../_lib/http.js';
 import { body as parseBody } from '../_lib/http.js';
-import { str } from '../_lib/validate.js';
+import { optionalStr, str } from '../_lib/validate.js';
 import { one, query, transaction } from '../_lib/db.js';
 import { isOperator } from '../../shared/operators.js';
 
@@ -80,6 +80,7 @@ async function openHousehold(req: VercelRequest, res: VercelResponse): Promise<v
   if (!email) throw unauthorized();
   const name = str(parseBody(req)['name'], 'שם הבית', { max: 60 });
 
+  await rememberName(req, email);
   const membership = await createHousehold(name, email);
   setHouseholdCookie(res, membership.household_id);
   json(res, 201, { household: membership });
@@ -124,11 +125,16 @@ async function createInvite(req: VercelRequest, res: VercelResponse): Promise<vo
 /** What an invitation link says about itself, before anyone accepts it. */
 async function readInvite(req: VercelRequest, res: VercelResponse): Promise<void> {
   const token = String((req.query as Record<string, unknown>)['token'] ?? '');
-  const invite = await one<{ household_name: string; role: string; spent: boolean }>(
+  // Who sent it, by the name they gave themselves: the link arrives in a chat,
+  // and «יוסי הזמין אותך» is the difference between a message from a person
+  // and one from a system the invitee has never heard of.
+  const invite = await one<{ household_name: string; role: string; spent: boolean; invited_by: string | null }>(
     `SELECT h.name AS household_name, i.role,
-            (i.accepted_at IS NOT NULL OR i.expires_at < NOW()) AS spent
+            (i.accepted_at IS NOT NULL OR i.expires_at < NOW()) AS spent,
+            COALESCE(u.display_name, split_part(u.name, ' ', 1)) AS invited_by
        FROM household_invites i
        JOIN households h ON h.id = i.household_id
+       LEFT JOIN users u ON u.email = i.created_by
       WHERE i.token = $1`,
     [token],
   );
@@ -174,12 +180,27 @@ async function acceptInvite(req: VercelRequest, res: VercelResponse): Promise<vo
   });
 
   if (!membership) throw badRequest('ההזמנה כבר נוצלה או פגה. בקשו קישור חדש.');
+  await rememberName(req, email);
 
   setHouseholdCookie(res, membership.household_id);
   json(res, 200, { household_id: membership.household_id, role: membership.role });
 }
 
 // ── Small helpers ────────────────────────────────────────────────────────
+
+/**
+ * «איך לקרוא לך», asked once, when a person opens a home or joins one.
+ *
+ * Google's name is the one on the account — «Yossi Cohen», or a work
+ * address's formal one — and it is what «מי שילם» showed until now. The name
+ * a couple uses for each other is a different thing, and only they know it.
+ * Absent or blank leaves whatever is there.
+ */
+async function rememberName(req: VercelRequest, email: string): Promise<void> {
+  const name = optionalStr(parseBody(req)['display_name'], 'איך לקרוא לך', 40);
+  if (!name) return;
+  await query(`UPDATE users SET display_name = $2 WHERE email = $1`, [email, name]);
+}
 
 function setHouseholdCookie(res: VercelResponse, householdId: number): void {
   const maxAge = 365 * 24 * 60 * 60;

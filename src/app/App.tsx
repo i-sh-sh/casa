@@ -12,9 +12,10 @@ import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
 import { AdminScreen } from '../features/admin/AdminScreen.js';
-import { HouseholdGate } from '../features/household/HouseholdGate.js';
+import { AcceptInvite, HouseholdGate, type InviteInfo } from '../features/household/HouseholdGate.js';
 import { api } from '../lib/api.js';
 import { useVersion } from '../lib/version.js';
+import { afterPrefix } from '@shared/hebrew.js';
 
 const TABS: { to: string; icon: IconName; label: string }[] = [
   { to: '/',         icon: 'home',   label: 'הבית' },
@@ -105,6 +106,35 @@ const HOME_ORIGIN = 'https://www.casa-ish.com';
 const onDeploymentUrl = (): boolean =>
   typeof location !== 'undefined' && location.hostname.endsWith('.vercel.app');
 
+const inviteToken = (): string | null => new URLSearchParams(location.search).get('invite');
+
+/**
+ * Who sent the link, said before the Google button.
+ *
+ * The partner who follows an invite lands here first, and this screen used to
+ * be the same one anybody gets: a slogan and a button. Nothing said they were
+ * expected, or where. The invite is readable without signing in (it names a
+ * home and a first name, nothing more), so the screen can say both.
+ */
+function InviteNote() {
+  const [invite, setInvite] = useState<InviteInfo | null>(null);
+  const token = inviteToken();
+
+  useEffect(() => {
+    if (!token) return;
+    api.get<InviteInfo>('/auth/invite', { token }).then(setInvite).catch(() => {});
+  }, [token]);
+
+  if (!invite || invite.spent) return null;
+  return (
+    <p style={{ marginBottom: 'var(--s4)' }}>
+      {invite.invited_by ? <>{invite.invited_by} הזמין אתכם ל</> : 'הוזמנתם ל'}<b>{afterPrefix(invite.household_name)}</b>.
+      <br />
+      היכנסו עם Google כדי להצטרף.
+    </p>
+  );
+}
+
 function SignIn() {
   const { googleClientId, failure, refresh } = useSession();
 
@@ -123,6 +153,8 @@ function SignIn() {
         התקציב, המזווה ורשימת הקניות. פנקס אחד, לשנינו.
       </p>
       <hr className="rule" style={{ margin: '0 0 var(--s5)' }} />
+
+      <InviteNote />
 
       {failure ? (
         <>
@@ -180,6 +212,7 @@ function Shell() {
   const { user, loading, signOut, refresh } = useSession();
   const { stuck, reload } = useVersion();
   const [openItems, setOpenItems] = useState(0);
+  const [invite, setInvite] = useState(inviteToken);
 
   // The one number worth knowing without opening a screen: is there anything
   // to buy. It rides in the nav so the answer costs no navigation.
@@ -202,6 +235,24 @@ function Shell() {
   if (!user) return <SignIn />;
   // Signed in, but belonging nowhere: open a home, or open an invitation.
   if (user.household_id === null) return <HouseholdGate onJoined={() => { void refresh(); }} />;
+  // An invite link opened by somebody who already has a home. HouseholdGate
+  // only appears for people with none, so this used to drop the link silently:
+  // a partner who had tried the app the day before landed in their own empty
+  // home, and the couple could not tell why they saw different numbers.
+  if (invite) {
+    const stay = () => { history.replaceState(null, '', location.pathname); setInvite(null); };
+    return (
+      <div className="gate">
+        <div className="wordmark">קאסה</div>
+        <AcceptInvite
+          token={invite}
+          currentHome={user.household_name}
+          onJoined={() => { setInvite(null); void refresh(); }}
+          onStay={stay}
+        />
+      </div>
+    );
+  }
   if (user.role === 'pending') {
     return <Pending email={user.email} household={user.household_name ?? ''} onSignOut={() => void signOut()} />;
   }

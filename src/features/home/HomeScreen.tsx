@@ -6,6 +6,8 @@ import { ErrorNote, Loading, useAsync, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TransactionSheet } from '../money/TransactionsScreen.js';
 import { SetupCard } from './SetupCard.js';
+import { InstallHint } from './InstallHint.js';
+import { firstName } from '../household/HouseholdGate.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS, monthKey } from '@shared/money.js';
 import type { BudgetMonth, Product, RecurringBill, ShoppingItem } from '@shared/types.js';
@@ -93,7 +95,7 @@ export function HomeScreen() {
           doing, and it used to be three taps deep under the budget. It is one
           tap from the first screen now, wherever the page is scrolled to. */}
       <TopBar
-        title={`${greeting()}${user?.display_name ? `, ${user.display_name}` : ''}`}
+        title={`${greeting()}${firstName(user ?? null) ? `, ${firstName(user ?? null)}` : ''}`}
         action={(
           <button className="btn btn-sm btn-primary" onClick={() => setAdding(true)}>
             <Icon name="plus" size={16} /> הוצאה
@@ -102,6 +104,7 @@ export function HomeScreen() {
       />
 
       <div className="page">
+        <InstallHint />
         <SetupCard />
 
         {loading && <Loading />}
