@@ -1,4 +1,4 @@
-const CACHE_NAME = 'casa-v0.7.0';
+const CACHE_NAME = 'casa-v0.8.0';
 
 /**
  * The supermarket service worker.
