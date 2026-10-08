@@ -10,6 +10,7 @@ import { InstallHint } from './InstallHint.js';
 import { firstName } from '../household/HouseholdGate.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { formatILS, monthKey } from '@shared/money.js';
+import { FlowHero } from '../money/FlowHero.js';
 import type { BudgetMonth, Product, RecurringBill, ShoppingItem } from '@shared/types.js';
 
 function greeting(): string {
@@ -85,9 +86,6 @@ export function HomeScreen() {
     && (expiring.data?.length ?? 0) === 0
     && soonBills.length === 0;
 
-  // The same number the budget screen leads with. Two screens that disagree
-  // about what the headline figure is are two screens nobody trusts.
-  const short = (budget.data?.flow.monthly ?? 0) < 0;
 
   return (
     <>
@@ -112,24 +110,7 @@ export function HomeScreen() {
 
         {budget.data && (
           <Link to="/budget" style={{ textDecoration: 'none', display: 'block' }}>
-            <div className="hero">
-              <div className="label">תזרים החודש</div>
-              <div className={`figure ${short ? 'over' : ''}`}>
-                {formatILS(budget.data.flow.monthly, { sign: true })}
-              </div>
-              <div className="meta" style={{ marginTop: 'var(--s2)' }}>
-                נכנס <span className="n">{formatILS(budget.data.flow.income)}</span>
-                {' · הוצא '}<span className="n">{formatILS(budget.data.flow.spent)}</span>
-              </div>
-              {/* The month said it did not cover itself. That is the whole
-                  statement — no multiplication out to a year and three, which
-                  was rhetoric dressed as a measurement. */}
-              {short && (
-                <div className="meta" style={{ marginTop: 'var(--s2)', color: 'var(--red)' }}>
-                  החודש הוציא יותר ממה שנכנס
-                </div>
-              )}
-            </div>
+            <FlowHero flow={budget.data.flow} />
           </Link>
         )}
 
@@ -140,35 +121,45 @@ export function HomeScreen() {
           </div>
         )}
 
-        {(shopping.data?.length ?? 0) > 0 && (
-          <Entry
-            to="/shopping"
-            label="לקנות"
-            count={shopping.data?.length ?? 0}
-            body={run((shopping.data ?? []).map((i) => i.name))}
-            note={(low.data?.length ?? 0) > 0 ? `${low.data?.length} מהם נגמרו במזווה` : undefined}
-          />
-        )}
-
-        {(expiring.data?.length ?? 0) > 0 && (
-          <Entry
-            to="/pantry"
-            label="להשתמש לפני שיתקלקל"
-            count={expiring.data?.length ?? 0}
-            tone="red"
-            body={run((expiring.data ?? []).map((e) =>
-              `${e.product_name} (${e.days_left <= 0 ? 'היום' : `${e.days_left} ימים`})`))}
-          />
-        )}
-
-        {soonBills.length > 0 && (
-          <Entry
-            to="/budget"
-            label="חשבונות שמגיעים"
-            count={soonBills.length}
-            tone="red"
-            body={run(soonBills.map((b) => `${b.name}${b.amount_estimate ? ` · ${formatILS(b.amount_estimate)}` : ''}`))}
-          />
+        {/* One section, one row per errand. These used to be three sections,
+            each with its own heading and rule and 36px above it — three times
+            the furniture for three lines of content, and the eye had to find
+            where each began. The count sits in the margin column, where every
+            screen keeps its marks. */}
+        {!quiet && !settling && (
+          <section className="section">
+            <h2>היום</h2>
+            <div className="rows">
+              {(shopping.data?.length ?? 0) > 0 && (
+                <Entry
+                  to="/shopping"
+                  label="לקנות"
+                  count={shopping.data?.length ?? 0}
+                  body={run((shopping.data ?? []).map((i) => i.name))}
+                  note={(low.data?.length ?? 0) > 0 ? `${low.data?.length} נגמרו במזווה` : undefined}
+                />
+              )}
+              {(expiring.data?.length ?? 0) > 0 && (
+                <Entry
+                  to="/pantry"
+                  label="להשתמש לפני שיתקלקל"
+                  count={expiring.data?.length ?? 0}
+                  tone="red"
+                  body={run((expiring.data ?? []).map((e) =>
+                    `${e.product_name} (${e.days_left <= 0 ? 'היום' : `${e.days_left} ימים`})`))}
+                />
+              )}
+              {soonBills.length > 0 && (
+                <Entry
+                  to="/budget"
+                  label="חשבונות שמגיעים"
+                  count={soonBills.length}
+                  tone="red"
+                  body={run(soonBills.map((b) => `${b.name}${b.amount_estimate ? ` · ${formatILS(b.amount_estimate)}` : ''}`))}
+                />
+              )}
+            </div>
+          </section>
         )}
       </div>
 
@@ -184,30 +175,22 @@ export function HomeScreen() {
 }
 
 /**
- * One entry in the day's ledger.
+ * One errand in the day's ledger: how many in the margin, what in the body.
  *
- * Not a card — a ruled section with its count in the reserved right margin,
- * exactly like every other row in the app. The label is the small tracked
- * thing; the content is what you read.
+ * Not a card — a ruled row, the whole of it the link, exactly like every
+ * other row in the app.
  */
-function Entry({ to, label, body, note, count, amount, tone }: {
-  to: string; label: string; body: string; note?: string;
-  count?: number; amount?: number; tone?: 'red';
+function Entry({ to, label, body, note, count, tone }: {
+  to: string; label: string; body: string; note?: string; count: number; tone?: 'red';
 }): ReactNode {
   return (
-    <Link to={to} style={{ textDecoration: 'none', display: 'block' }}>
-      <section className="section">
-        <h2 style={tone === 'red' ? { color: 'var(--red)', borderBottomColor: 'var(--red)' } : undefined}>
-          {label} {count != null && <span className="count n">{count}</span>}
-        </h2>
-        <div className="row">
-          <span className="grow">
-            <span style={{ display: 'block', fontSize: 17, lineHeight: 1.45 }}>{body}</span>
-            {note && <span className="mark mark-blue">{note}</span>}
-          </span>
-          {amount != null && <span className="n amount" style={{ fontSize: 20 }}>{formatILS(amount)}</span>}
-        </div>
-      </section>
+    <Link to={to} className="row" style={{ textDecoration: 'none' }}>
+      <span className={`margin-col figure-col n ${tone === 'red' ? 'over' : ''}`}>{count}</span>
+      <span className="grow">
+        <span className="label" style={{ display: 'block', ...(tone === 'red' ? { color: 'var(--red)' } : {}) }}>{label}</span>
+        <span style={{ display: 'block', fontSize: 16, lineHeight: 1.45 }}>{body}</span>
+        {note && <span className="mark mark-blue">{note}</span>}
+      </span>
     </Link>
   );
 }

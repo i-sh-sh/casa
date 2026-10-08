@@ -92,19 +92,22 @@ export function AdminScreen() {
     <>
       <TopBar
         title="ניהול המערכת"
-        subtitle="ספירות ותאריכים בלבד"
         action={<Link to="/settings" className="btn btn-sm">הגדרות</Link>}
       />
 
       <div className="page">
-        <section className="section">
-          <h2>הבתים <span className="count">· {pilot.length}</span></h2>
+        {/* The three answers this screen exists for, read in one line before
+            any home is. */}
+        {pilot.length > 0 && (
+          <div className="pairs">
+            <div><span className="label">בתים</span><span className="n">{pilot.length}</span></div>
+            <div><span className="label">פעילים השבוע</span><span className="n">{thisWeek}</span></div>
+            <div><span className="label">שקטים</span><span className={`n ${silent > 0 ? 'over' : ''}`}>{silent}</span></div>
+          </div>
+        )}
 
-          {pilot.length > 0 && (
-            <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
-              {thisWeek} רשמו תנועה השבוע · {silent} שקטים יותר משבוע
-            </p>
-          )}
+        <section className="section">
+          <h2>הבתים <span className="count">· {rows.length}</span></h2>
 
           <div className="rows">
             {rows.map((home) => <HomeRow key={home.household_id} home={home} />)}
@@ -114,9 +117,12 @@ export function AdminScreen() {
           {homes.error && <ErrorNote message={homes.error} onRetry={homes.reload} />}
           {!homes.loading && pilot.length === 0 && <p className="meta">אין עדיין בתים.</p>}
 
-          <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-            אין כאן סכומים, שמות עסקים או מוצרים, וגם לא בשאילתה שמזינה את המסך.
-            «שקט» = שבוע בלי שום פעולה. «ימים עם תנועה» = בכמה ימים נרשמה תנועה בכל שבוע מאז שהבית נפתח; השבוע השלישי מודגש.
+          {/* The legend, once, under the rows it explains. The sentence about
+              amounts stays: it is the promise this screen is built on. */}
+          <p className="meta" style={{ marginTop: 'var(--s2)', display: 'flex', flexWrap: 'wrap', gap: 'var(--s1) var(--s3)', alignItems: 'center' }}>
+            <span><span className="steps"><i className="done" /><i /></span> הקמה</span>
+            <span><span className="weeks" style={{ height: 12 }}><i style={{ height: 12 }} /><i className="key-week" style={{ height: 8 }} /></span> ימים עם תנועה בכל שבוע, השלישי ממוסגר</span>
+            <span>בלי סכומים ובלי שמות עסקים</span>
           </p>
         </section>
 
@@ -179,10 +185,8 @@ function TestingSection({ onRebuilt }: { onRebuilt: () => void }) {
   return (
     <section className="section">
       <h2>משתמשי בדיקה</h2>
-      <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
-        ארבעה אנשים מדומים, כדי לעבור על האפליקציה אחרי כל עדכון בלי חשבונות Google נוספים.
-        נכנסים בתור אחד מהם, ופס כחול למעלה מחזיר לחשבון שלכם.
-        הכתובות שלהם מסתיימות ב-<span className="n">casa.invalid</span>, אז אף אחד אמיתי לא יכול להיכנס בתורם.
+      <p className="meta" style={{ margin: 'var(--s2) 0' }}>
+        נכנסים בתור אחד מהם; הפס הכחול למעלה מחזיר אליכם.
       </p>
 
       {state.loading && <Loading />}
@@ -195,9 +199,6 @@ function TestingSection({ onRebuilt }: { onRebuilt: () => void }) {
               <span className="grow">
                 <span className="title" style={{ display: 'block' }}>{p.display_name}</span>
                 <span className="meta" style={{ display: 'block' }}>{p.purpose}</span>
-                <span className="meta" style={{ fontSize: 12, display: 'block' }}>
-                  {p.homes.length ? p.homes.join(', ') : 'בלי בית'}
-                </span>
               </span>
               <button className="btn btn-sm" disabled={busy !== null} onClick={() => void enter(p.key)}>
                 {busy === p.key ? 'רגע…' : 'כניסה'}
@@ -217,8 +218,7 @@ function TestingSection({ onRebuilt }: { onRebuilt: () => void }) {
         ) : confirming ? (
           <>
             <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
-              כל מה שנעשה בבתי הבדיקה יימחק, ונועה ועומר יחזרו להיות בלי בית.
-              הבית של דנה ויואב ייבנה מחדש עם חודשיים של נתונים עד היום. בתים אמיתיים לא נוגעים.
+              בתי הבדיקה נמחקים ונבנים מחדש. בתים אמיתיים לא נוגעים.
             </p>
             <div className="row-2">
               <button className="btn btn-red" disabled={busy !== null} onClick={() => void rebuild()}>
@@ -241,6 +241,7 @@ function HomeRow({ home }: { home: HouseholdMetrics }) {
   const steps = setupSteps(home.setup);
   const missing = steps.filter((s) => !s.done);
   const current = Math.min(weekIndex(home.created_at), TRACKED_WEEKS - 1);
+  const weeks = home.active_days.slice(0, current + 1);
 
   return (
     <div className="row" style={{ alignItems: 'flex-start', paddingBlock: 'var(--s3)' }}>
@@ -256,30 +257,40 @@ function HomeRow({ home }: { home: HouseholdMetrics }) {
           {home.members} בבית
           {home.pending > 0 && ` · ${home.pending} ממתינים`}
           {' · נפתח '}{ago(home.created_at)}
-          {' · נכנסו '}{ago(home.last_seen_at)}
-          {' · פעילות '}{ago(home.last_activity_at)}
+          {' · פעיל '}{ago(home.last_activity_at)}
         </span>
 
-        <span className="meta" style={{ fontSize: 12, display: 'block', marginTop: 'var(--s1)' }}>
-          הקמה <span className="n">{setupDone(steps)}/{steps.length}</span>
-          {missing.length > 0 && <> · חסר: {missing.map((s) => s.label).join(', ')}</>}
-        </span>
-
-        {/* One figure per week that has begun, oldest first, isolated left to
-            right so the dots stay between the numbers instead of being
-            reordered around them. Week three is the pilot's question, so it is
-            the one set in bold. */}
-        <span className="meta" style={{ fontSize: 12, display: 'block' }}>
-          ימים עם תנועה, לפי שבוע:{' '}
-          <bdi dir="ltr" className="n" style={{ whiteSpace: 'nowrap' }}>
-            {home.active_days.slice(0, current + 1).map((days, w) => (
-              <span key={w} style={w === 2 ? { fontWeight: 700 } : undefined}>{w > 0 && ' · '}{days}</span>
+        {/* Two pictures instead of two sentences. The setup boxes are the
+            couple's own checklist, filled as they tick it. The columns are the
+            days with a recorded transaction in each week since the home
+            opened, oldest on the left; week three — the pilot's question — is
+            framed. The figures are kept for a screen reader and a long press. */}
+        <span style={{ display: 'flex', alignItems: 'flex-end', gap: 'var(--s4)', marginTop: 'var(--s2)' }}>
+          <span
+            className="steps"
+            role="img"
+            aria-label={`הקמה ${setupDone(steps)} מתוך ${steps.length}${missing.length ? `, חסר: ${missing.map((s) => s.label).join(', ')}` : ''}`}
+            title={missing.map((s) => s.label).join(', ')}
+          >
+            {steps.map((st) => <i key={st.key} className={st.done ? 'done' : ''} />)}
+          </span>
+          <span
+            className="weeks"
+            role="img"
+            aria-label={`ימים עם תנועה לפי שבוע: ${weeks.join(', ')}`}
+            title={weeks.join(' · ')}
+          >
+            {weeks.map((days, w) => (
+              <i
+                key={w}
+                className={`${days === 0 ? 'empty-week' : ''} ${w === 2 ? 'key-week' : ''}`}
+                style={{ height: `${Math.max(2, (Math.min(days, 7) / 7) * 28)}px` }}
+              />
             ))}
-          </bdi>
-          {current >= 2 ? '' : ` (עכשיו שבוע ${current + 1})`}
+          </span>
         </span>
       </span>
-      <span className="meta n" style={{ fontSize: 12, textAlign: 'start', minWidth: 96 }}>
+      <span className="meta n" style={{ fontSize: 12, textAlign: 'start', minWidth: 84 }}>
         {home.transactions} תנועות
         <br />
         {home.transactions_7d} השבוע

@@ -312,6 +312,10 @@ a { color: inherit; }
 .row:last-child { border-bottom: 0; }
 .row .grow { flex: 1; min-width: 0; }
 .row .title { font-size: 17px; line-height: 1.35; }
+/* Explanatory text is the quiet layer: one step down in size and ink, so the
+   figures and names it explains are what the eye lands on first. */
+.meta { font-size: 14px; color: var(--ink-2); line-height: 1.55; }
+.meta .n { color: var(--ink); }
 .row .meta { font-size: 13px; color: var(--ink-2); line-height: 1.5; }
 
 /* The reserved margin column — the spine of every screen. Dates, marks and
@@ -708,3 +712,54 @@ a { color: inherit; }
 .testbar-label { font-weight: 700; letter-spacing: 0.04em; }
 .testbar-who { flex: 1; min-width: 0; max-width: 220px; }
 .testbar-failure { flex-basis: 100%; color: var(--red); }
+
+/* ── Stacked gauge ───────────────────────────────────────────────────── */
+/*
+   One bar that says what a list of rows would: how a whole splits into its
+   parts. The parts are told apart by ink density, never by hue — the palette
+   has one red and it is spent on overdrawn — so a split reads the way a
+   printed chart in a ledger did: solid, half-tone, ruled, blank.
+
+   A hairline of paper between segments keeps two neighbouring tones from
+   merging into one block on a 2x screen.
+*/
+.bar { display: flex; height: 10px; background: var(--paper-2); margin: var(--s3) 0 var(--s2); }
+.bar > i { display: block; height: 100%; flex: none; }
+.bar > i + i { border-inline-start: 2px solid var(--paper); }
+.tone-1 { background: var(--ink); }
+.tone-2 { background: var(--ink-2); }
+.tone-3 { background: var(--rule-blue); }
+.tone-ink3 { background: var(--ink-3); }
+.tone-4 { background: var(--rule); }
+.tone-red { background: var(--red); }
+.tone-blank { background: transparent; outline: 1px solid var(--rule); outline-offset: -1px; }
+
+/* The legend swatch: the same tone, the size of a tick in the margin. */
+.swatch { display: inline-block; width: 10px; height: 10px; flex: none; }
+
+/* Counts in the margin column are numbers, and numbers are never set in the
+   marginal grey — the column is the spine, the figure on it is read. */
+.margin-col.figure-col { color: var(--ink); font-size: 20px; }
+.margin-col.figure-col.over { color: var(--red); }
+
+/* A row of small links: what a list of one-word rows was, read in one line. */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s3); }
+
+/* Week columns: a printed bar chart, one column per week, height = days. */
+.weeks { display: inline-flex; align-items: flex-end; gap: 3px; height: 28px; direction: ltr; }
+.weeks > i { display: block; width: 10px; background: var(--ink); min-height: 1px; }
+.weeks > i.empty-week { background: var(--rule); }
+.weeks > i.key-week { outline: 1px solid var(--ink); outline-offset: 1px; }
+
+/* Setup progress: one box per step, filled when done. */
+.steps { display: inline-flex; gap: 3px; vertical-align: middle; }
+.steps > i { display: block; width: 10px; height: 10px; border: 1px solid var(--ink); }
+.steps > i.done { background: var(--ink); }
+
+/* The inverse pair (§1): a small loud label over a plain 24px figure, set in
+   a ruled strip — three facts in one line instead of a paragraph. */
+.pairs { display: flex; border-bottom: 1px solid var(--rule); }
+.pairs > div { flex: 1; padding: var(--s3) 0; }
+.pairs > div + div { border-inline-start: 1px solid var(--rule); padding-inline-start: var(--s3); }
+.pairs .n { display: block; font-size: var(--t-sub); line-height: 1.2; text-align: right; }
+.pairs .over { color: var(--red); }

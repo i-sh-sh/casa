@@ -64,45 +64,43 @@ export function SettingsScreen() {
           </button>
         </section>
 
+        {user && <HouseholdSwitcher households={households} current={user.household_id ?? 0} />}
+
+        {isOwner && <MembersSection currentEmail={user.email} />}
+        {isOwner && <InviteSection />}
+
         <ThemeSection />
 
         <VersionSection />
 
-        {user && <HouseholdSwitcher households={households} current={user.household_id ?? 0} />}
-
         <ExportSection isOwner={isOwner} />
 
-        {isOwner && <MembersSection currentEmail={user.email} />}
-        {isOwner && <InviteSection />}
         {/* The operator runs the system from its own screen; an owner who is not
             one still needs the migration button after a deploy. */}
-        {isOperator ? (
-          <section className="section">
-            <h2>ניהול המערכת</h2>
-            <Link to="/admin" className="btn btn-block">כל הבתים, ההקמה והפעילות</Link>
-            <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-              וגם מסד הנתונים והמיגרציה. רק אתם רואים את זה.
-            </p>
-          </section>
-        ) : isOwner && <DatabaseSection />}
+        {!isOperator && isOwner && <DatabaseSection />}
 
+        {/* The rest is places to go, not things to read: one ruled row each,
+            the whole row the link, the way every list in the app works. */}
         <section className="section">
-          <h2>מדריך</h2>
-          {/* A plain <a>, not a router Link: the guide is a static page served
-              beside the app, not a screen inside it. */}
-          <a className="btn btn-block" href="/guide">איך המערכת עובדת</a>
-          <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-            חמישה־עשר מסכים קצרים שמסבירים את הכול — התקציב, המזווה, הרשימה, ולמה זה נראה ככה.
-          </p>
+          <h2>עוד</h2>
+          <div className="rows">
+            {isOperator && (
+              <Link to="/admin" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
+                <span className="grow">ניהול המערכת</span>
+                <span className="meta">כל הבתים ומסד הנתונים</span>
+              </Link>
+            )}
+            {/* A plain <a>, not a router Link: the guide is a static page served
+                beside the app, not a screen inside it. */}
+            <a href="/guide" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
+              <span className="grow">איך המערכת עובדת</span>
+              <span className="meta">מדריך קצר</span>
+            </a>
+            <button className="row" style={{ minHeight: 52 }} onClick={() => void signOut()}>
+              <span className="grow">יציאה</span>
+            </button>
+          </div>
         </section>
-
-        <section className="section">
-          <button className="btn btn-block" onClick={() => void signOut()}>יציאה</button>
-        </section>
-
-        <p className="meta" style={{ marginTop: 'var(--s6)' }}>
-          קאסה · פנקס אחד לבית אחד
-        </p>
       </div>
 
       {addingAccount && (
@@ -172,7 +170,7 @@ function ThemeSection() {
 
   return (
     <section className="section">
-      <h2>נייר</h2>
+      <h2>מראה</h2>
       <div className="tabs">
         <button className="tab" aria-pressed={theme === 'system'} onClick={() => apply('system')}>לפי המכשיר</button>
         <button className="tab" aria-pressed={theme === 'light'} onClick={() => apply('light')}>בהיר</button>
@@ -190,20 +188,14 @@ function VersionSection() {
   return (
     <section className="section">
       <h2>גרסה</h2>
-      <div className="rows">
-        <div className="row" style={{ minHeight: 44 }}>
-          <span className="grow label">מותקנת</span>
-          <span className="n">{currentVersion}</span>
-        </div>
-        <div className="row" style={{ minHeight: 44 }}>
-          <span className="grow label">פורסמה</span>
-          <span className="n">{serverVersion ?? '…'}</span>
-        </div>
+      <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
+        <span className="grow n">{currentVersion}</span>
+        {isOutdated
+          ? <span className="mark">יש גרסה <span className="n">{serverVersion}</span></span>
+          : <span className="meta">{serverVersion ? 'מעודכנת' : '…'}</span>}
       </div>
       {manifest?.notes && (
-        <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-          {manifest.notes}
-        </p>
+        <p className="meta">{manifest.notes}</p>
       )}
       {isOutdated && (
         <button className="btn btn-block btn-primary" style={{ marginTop: 'var(--s3)' }} onClick={reload}>
@@ -251,9 +243,6 @@ function MembersSection({ currentEmail }: { currentEmail: string }) {
         ))}
         {users.loading && <Loading />}
       </div>
-      <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-        «ממתין לאישור» רואה מסך המתנה בלבד. «צופה» רואה הכול ולא משנה כלום.
-      </p>
     </section>
   );
 }
@@ -276,24 +265,18 @@ function ExportSection({ isOwner }: { isOwner: boolean }) {
 
   return (
     <section className="section">
-      <h2>הנתונים שלכם</h2>
-      <div className="rows">
+      <h2>ייצוא <span className="count">· CSV</span></h2>
+      {/* Six one-word rows with the same button at the end of each were six
+          rows of furniture around six words. The words are the buttons now. */}
+      <div className="chips">
         {(sheets.data ?? []).map((sheet) => (
-          <div className="row" key={sheet.name} style={{ minHeight: 44 }}>
-            <span className="grow title">{sheet.label}</span>
-            <a className="btn btn-sm" href={`/api/admin/export?sheet=${sheet.name}`}>CSV</a>
-          </div>
+          <a className="btn btn-sm" key={sheet.name} href={`/api/admin/export?sheet=${sheet.name}`}>{sheet.label}</a>
         ))}
-        {sheets.loading && <Loading />}
+        {isOwner && <a className="btn btn-sm" href="/api/admin/export/all">גיבוי מלא · JSON</a>}
       </div>
-      {isOwner && (
-        <a className="btn btn-block btn-sm" style={{ marginTop: 'var(--s3)' }} href="/api/admin/export/all">
-          גיבוי מלא · JSON
-        </a>
-      )}
+      {sheets.loading && <Loading />}
       <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-        הקבצים נפתחים באקסל ובגיליונות של גוגל, בעברית. הגיבוי המלא שומר גם את מה
-        שהקבצים הקריאים משמיטים — הוא לשחזור, לא לקריאה.
+        נפתח באקסל ובגיליונות של גוגל. הגיבוי המלא הוא לשחזור.
       </p>
     </section>
   );
@@ -354,26 +337,28 @@ export function InviteSection() {
 
   return (
     <section className="section">
-      <h2>הזמנה</h2>
+      <h2>להזמין לבית</h2>
       {link ? (
         <>
           <p className="meta n" style={{ fontSize: 13, wordBreak: 'break-all', marginBottom: 'var(--s3)' }}>{link}</p>
           <button className="btn btn-primary btn-block" onClick={() => void share()}>שליחה בוואטסאפ או בהודעה</button>
           <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s2)' }} onClick={() => void copy()}>העתקת הקישור</button>
           <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-            תקף שבוע, ולפעם אחת. הקישור לא נשמר בשום מקום שאפשר לחזור אליו — אם הוא אבד, צרו חדש.
+            תקף שבוע, לפעם אחת. אם אבד, יוצרים חדש.
           </p>
         </>
       ) : (
         <>
-          <button className="btn btn-block btn-sm" disabled={busy} onClick={() => void mint('member')}>
-            קישור הזמנה לשותף
-          </button>
-          <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s2)' }} disabled={busy} onClick={() => void mint('viewer')}>
-            קישור לצופה בלבד
-          </button>
+          <div className="row-2" style={{ marginTop: 'var(--s3)' }}>
+            <button className="btn btn-sm" disabled={busy} onClick={() => void mint('member')}>
+              שותף
+            </button>
+            <button className="btn btn-sm" disabled={busy} onClick={() => void mint('viewer')}>
+              צופה
+            </button>
+          </div>
           <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-            «שותף» רואה ומשנה הכול. «צופה» רואה הכול ולא משנה כלום.
+            שותף רואה ומשנה. צופה רק רואה.
           </p>
         </>
       )}
@@ -448,14 +433,16 @@ export function DatabaseSection() {
 
       {failure && <ErrorNote message={failure} />}
 
-      <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s3)' }} disabled={busy !== null} onClick={() => void run('migrate')}>
-        {busy === 'migrate' ? 'רץ…' : 'הרצת מיגרציה'}
-      </button>
-      <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s2)' }} disabled={busy !== null} onClick={() => void run('seed')}>
-        {busy === 'seed' ? 'רץ…' : 'זריעת קטגוריות ומוצרי ברירת מחדל'}
-      </button>
+      <div className="row-2" style={{ marginTop: 'var(--s3)' }}>
+        <button className="btn btn-sm" disabled={busy !== null} onClick={() => void run('migrate')}>
+          {busy === 'migrate' ? 'רץ…' : 'מיגרציה'}
+        </button>
+        <button className="btn btn-sm" disabled={busy !== null} onClick={() => void run('seed')}>
+          {busy === 'seed' ? 'רץ…' : 'זריעה'}
+        </button>
+      </div>
       <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-        המיגרציה בטוחה לחזור עליה כמה פעמים שרוצים ולא מוחקת נתונים. הזריעה רצה רק על מסד ריק.
+        מיגרציה לא מוחקת כלום ואפשר לחזור עליה. זריעה רק על מסד ריק.
       </p>
     </section>
   );

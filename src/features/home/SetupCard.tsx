@@ -52,7 +52,7 @@ export function SetupCard() {
     <section className="section">
       <h2>להקים את הבית <span className="count n">{done}/{steps.length}</span></h2>
       <p className="meta" style={{ marginBottom: 'var(--s2)' }}>
-        הבית פתוח. ארבעה דברים, וכל מה שרואים כאן יהיה שלכם. אפשר לדלג על כל אחד.
+        ארבעה צעדים, ואפשר לדלג על כל אחד.
       </p>
 
       <div className="rows">
