@@ -18,6 +18,10 @@ export const SESSION_COOKIE = 'casa_session';
 // Which home to act in, for a person who belongs to more than one. A
 // preference, not a permission — see pickHousehold.
 export const HOUSEHOLD_COOKIE = 'casa_household';
+// The operator's own session, parked while they walk the app as a test person
+// (shared/testing.ts). Holding the token itself, rather than a flag, is what
+// makes «חזרה לחשבון שלי» need no second Google sign-in.
+export const RETURN_COOKIE = 'casa_return';
 
 export type Role = 'owner' | 'member' | 'viewer' | 'pending';
 
@@ -126,21 +130,31 @@ export async function verifyGoogleToken(idToken: string): Promise<{ email: strin
 
 // ── Cookies ──────────────────────────────────────────────────────────────
 
-export function setSessionCookie(res: VercelResponse, token: string): void {
+/**
+ * Adds a cookie to the response rather than replacing the ones already set.
+ *
+ * Stepping into a test person sets three cookies in one response; three calls
+ * to `setHeader('set-cookie', …)` would leave only the last one standing.
+ */
+export function appendCookie(res: VercelResponse, cookie: string): void {
+  const existing = res.getHeader('set-cookie');
+  const list = existing === undefined ? [] : Array.isArray(existing) ? existing : [String(existing)];
+  res.setHeader('set-cookie', [...list, cookie]);
+}
+
+export function setSessionCookie(res: VercelResponse, token: string, name: string = SESSION_COOKIE): void {
   const maxAge = SESSION_DAYS * 24 * 60 * 60;
-  res.setHeader('set-cookie', [
-    // HttpOnly: script on the page cannot read it, so an XSS bug does not
-    // hand over the session. SameSite=Lax: it still rides a normal navigation
-    // back into the app, but not a cross-site form post.
-    `${SESSION_COOKIE}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
-  ]);
+  // HttpOnly: script on the page cannot read it, so an XSS bug does not
+  // hand over the session. SameSite=Lax: it still rides a normal navigation
+  // back into the app, but not a cross-site form post.
+  appendCookie(res, `${name}=${token}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
 }
 
-export function clearSessionCookie(res: VercelResponse): void {
-  res.setHeader('set-cookie', [`${SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`]);
+export function clearSessionCookie(res: VercelResponse, name: string = SESSION_COOKIE): void {
+  appendCookie(res, `${name}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`);
 }
 
-function readCookie(req: VercelRequest, name: string): string | null {
+export function readCookie(req: VercelRequest, name: string): string | null {
   const header = req.headers.cookie;
   if (!header) return null;
   for (const part of header.split(';')) {
@@ -153,12 +167,31 @@ function readCookie(req: VercelRequest, name: string): string | null {
 
 // ── What the rest of the API calls ───────────────────────────────────────
 
+/** The session token this request carries, from the cookie or a bearer header. */
+export function sessionToken(req: VercelRequest): string | null {
+  return readCookie(req, SESSION_COOKIE)
+    ?? (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null);
+}
+
 /** Who is signed in, before any household is chosen. Null when nobody is. */
 export function signedInEmail(req: VercelRequest): string | null {
-  const token = readCookie(req, SESSION_COOKIE)
-    ?? (req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null);
+  const token = sessionToken(req);
   if (!token) return null;
   return verifySession(token)?.email ?? null;
+}
+
+/**
+ * The operator's parked session, when this request is a test person's.
+ *
+ * Verified like any session: a forged or expired one is no session at all. It
+ * grants nothing by being present — the step-in route still checks the address
+ * against CASA_OPERATORS — it only says who to hand the browser back to.
+ */
+export function parkedSession(req: VercelRequest): { token: string; email: string } | null {
+  const token = readCookie(req, RETURN_COOKIE);
+  if (!token) return null;
+  const payload = verifySession(token);
+  return payload ? { token, email: payload.email } : null;
 }
 
 export interface Membership {

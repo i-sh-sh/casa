@@ -18,14 +18,22 @@ interface SessionValue {
   googleClientId: string | null;
   /** Offers the pilot screen. Never the authorisation — the API checks for itself. */
   isOperator: boolean;
+  /** Set while the operator is walking the app as a test person (shared/testing.ts). */
+  testing: Testing | null;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** Becomes a test person, or another one. Operator only; the API checks. */
+  stepIn: (persona: string) => Promise<void>;
+  /** Back to the operator's own account. */
+  stepBack: () => Promise<void>;
 }
+
+export interface Testing { persona: string; display_name: string }
 
 const SessionContext = createContext<SessionValue>({
   user: null, failure: null, members: [], households: [], loading: true, googleClientId: null,
-  isOperator: false,
-  refresh: async () => {}, signOut: async () => {},
+  isOperator: false, testing: null,
+  refresh: async () => {}, signOut: async () => {}, stepIn: async () => {}, stepBack: async () => {},
 });
 
 interface MeResponse {
@@ -34,6 +42,21 @@ interface MeResponse {
   households?: Household[];
   google_client_id: string | null;
   is_operator?: boolean;
+  testing?: Testing | null;
+}
+
+/**
+ * What one person's session leaves on this phone, cleared when it ends.
+ *
+ * The cached shopping list and the queue of unsent actions both belong to a
+ * household. Leaving them behind shows the next person — or the next test
+ * person — the previous home's list before a single request is made.
+ */
+function forgetLocalState(): void {
+  try {
+    navigator.serviceWorker?.controller?.postMessage('casa:forget');
+    localStorage.removeItem('casa.outbox.v1');
+  } catch { /* no service worker, or storage refused */ }
 }
 
 export function SessionProvider({ children }: { children: ReactNode }) {
@@ -42,6 +65,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [households, setHouseholds] = useState<Household[]>([]);
   const [googleClientId, setGoogleClientId] = useState<string | null>(null);
   const [isOperator, setIsOperator] = useState(false);
+  const [testing, setTesting] = useState<Testing | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -64,6 +88,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setHouseholds(data.households ?? []);
       setGoogleClientId(data.google_client_id);
       setIsOperator(data.is_operator === true);
+      setTesting(data.testing ?? null);
       setFailure(null);
     } catch (err) {
       setUser(null);
@@ -86,17 +111,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setFailure(null);
     setMembers([]);
     setHouseholds([]);
-    // The cached shopping list has to go with the session. Otherwise the next
-    // person to open the app on this phone sees the previous household's list
-    // before a single request is made.
-    try {
-      navigator.serviceWorker?.controller?.postMessage('casa:forget');
-      localStorage.removeItem('casa.outbox.v1');
-    } catch { /* no service worker, or storage refused */ }
+    setTesting(null);
+    forgetLocalState();
   }, []);
 
+  const stepIn = useCallback(async (persona: string) => {
+    await api.post('/auth/test-as', { persona });
+    forgetLocalState();
+    await refresh();
+  }, [refresh]);
+
+  const stepBack = useCallback(async () => {
+    try {
+      await api.post('/auth/test-back');
+    } finally {
+      forgetLocalState();
+      await refresh();
+    }
+  }, [refresh]);
+
   return (
-    <SessionContext.Provider value={{ user, failure, members, households, loading, googleClientId, isOperator, refresh, signOut }}>
+    <SessionContext.Provider value={{
+      user, failure, members, households, loading, googleClientId, isOperator, testing,
+      refresh, signOut, stepIn, stepBack,
+    }}>
       {children}
     </SessionContext.Provider>
   );

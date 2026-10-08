@@ -1,15 +1,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { randomBytes } from 'node:crypto';
 import {
-  clearSessionCookie, createHousehold, currentUser, hasRole, HOUSEHOLD_COOKIE,
-  membershipsOf, setSessionCookie, signedInEmail, signSession,
-  upsertUserOnSignIn, verifyGoogleToken, type SessionUser,
+  appendCookie, clearSessionCookie, createHousehold, currentUser, hasRole, HOUSEHOLD_COOKIE,
+  membershipsOf, parkedSession, RETURN_COOKIE, sessionToken, setSessionCookie, signedInEmail,
+  signSession, upsertUserOnSignIn, verifyGoogleToken, type SessionUser,
 } from '../_lib/auth.js';
 import { badRequest, forbidden, handler, json, notFound, unauthorized } from '../_lib/http.js';
 import { body as parseBody } from '../_lib/http.js';
 import { optionalStr, str } from '../_lib/validate.js';
 import { one, query, transaction } from '../_lib/db.js';
 import { isOperator } from '../../shared/operators.js';
+import { isTestEmail, personaByEmail, personaByKey } from '../../shared/testing.js';
 
 // The endpoints that cannot themselves require a household, which is why they
 // live outside the module routers.
@@ -35,6 +36,9 @@ async function signIn(req: VercelRequest, res: VercelResponse): Promise<void> {
 
 async function signOut(_req: VercelRequest, res: VercelResponse): Promise<void> {
   clearSessionCookie(res);
+  // Signing out while stepped into a test person signs the operator out too:
+  // a parked session left behind on a shared phone is a session left behind.
+  clearSessionCookie(res, RETURN_COOKIE);
   json(res, 200, { ok: true });
 }
 
@@ -51,11 +55,12 @@ async function me(req: VercelRequest, res: VercelResponse): Promise<void> {
   // never the authorisation: /api/admin/metrics checks the same list itself, so
   // a forged `is_operator` in a response buys nothing.
   const is_operator = isOperator(process.env.CASA_OPERATORS, user.email);
+  const testing = testingBanner(req, user.email);
 
   const households = await membershipsOf(user.email);
 
   if (user.household_id === null) {
-    json(res, 200, { user, members: [], households, google_client_id, is_operator });
+    json(res, 200, { user, members: [], households, google_client_id, is_operator, testing });
     return;
   }
 
@@ -71,7 +76,7 @@ async function me(req: VercelRequest, res: VercelResponse): Promise<void> {
       ORDER BY m.joined_at`,
     [user.household_id],
   );
-  json(res, 200, { user, members, households, google_client_id, is_operator });
+  json(res, 200, { user, members, households, google_client_id, is_operator, testing });
 }
 
 /** Opens a new home. Anyone signed in may — they can only ever see their own. */
@@ -186,6 +191,70 @@ async function acceptInvite(req: VercelRequest, res: VercelResponse): Promise<vo
   json(res, 200, { household_id: membership.household_id, role: membership.role });
 }
 
+// ── Test people ──────────────────────────────────────────────────────────
+//
+// The operator walks the app as one of the people in shared/testing.ts, then
+// comes back. The swap is two cookies: the session becomes the test person's,
+// and the operator's own session is parked beside it until they return.
+
+/**
+ * The operator behind this request: the parked session when stepped in (so
+ * moving from one test person to another needs no trip back), else whoever is
+ * signed in. Checked against CASA_OPERATORS every time, never remembered.
+ */
+function operatorOf(req: VercelRequest): { token: string; email: string } {
+  const operators = process.env.CASA_OPERATORS;
+  const parked = parkedSession(req);
+  if (parked && isOperator(operators, parked.email)) return parked;
+
+  const email = signedInEmail(req);
+  const token = sessionToken(req);
+  if (!email || !token) throw unauthorized();
+  if (!isOperator(operators, email)) throw forbidden();
+  return { token, email };
+}
+
+async function stepIn(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const operator = operatorOf(req);
+  // A key, looked up in a fixed list. The request never names an address, so
+  // this route can only ever produce one of the `.invalid` people.
+  const persona = personaByKey(parseBody(req)['persona']);
+  if (!persona) throw badRequest('אין משתמש בדיקה כזה');
+
+  const exists = await one(`SELECT 1 FROM users WHERE email = $1`, [persona.email]);
+  if (!exists) throw badRequest('משתמשי הבדיקה עוד לא נבנו. לחצו «לבנות מחדש» במסך הניהול.');
+  await query(`UPDATE users SET last_seen_at = NOW() WHERE email = $1`, [persona.email]);
+
+  setSessionCookie(res, signSession(persona.email));
+  setSessionCookie(res, operator.token, RETURN_COOKIE);
+  // The operator's choice of home means nothing to the test person.
+  clearHouseholdCookie(res);
+  json(res, 200, { persona: persona.key });
+}
+
+async function stepBack(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const parked = parkedSession(req);
+  clearSessionCookie(res, RETURN_COOKIE);
+  clearHouseholdCookie(res);
+  if (!parked) {
+    if (!isTestEmail(signedInEmail(req))) { json(res, 200, { ok: true }); return; }
+    // Expired or tampered with: there is nobody to hand back to, and staying
+    // signed in as a test person would look like being signed in as yourself.
+    clearSessionCookie(res);
+    throw unauthorized('החיבור שלך פג. היכנסו שוב עם Google.');
+  }
+  setSessionCookie(res, parked.token);
+  json(res, 200, { ok: true });
+}
+
+/** What the strip across the top of the screen says while stepped in. */
+function testingBanner(req: VercelRequest, email: string): { persona: string; display_name: string } | null {
+  if (!isTestEmail(email)) return null;
+  const persona = personaByEmail(email);
+  if (!persona || !parkedSession(req)) return null;
+  return { persona: persona.key, display_name: persona.display_name };
+}
+
 // ── Small helpers ────────────────────────────────────────────────────────
 
 /**
@@ -206,9 +275,11 @@ function setHouseholdCookie(res: VercelResponse, householdId: number): void {
   const maxAge = 365 * 24 * 60 * 60;
   // Not HttpOnly-critical — it carries a preference, not an authorisation —
   // but there is no reason for script to read it either.
-  res.setHeader('set-cookie', [
-    `${HOUSEHOLD_COOKIE}=${householdId}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`,
-  ]);
+  appendCookie(res, `${HOUSEHOLD_COOKIE}=${householdId}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${maxAge}`);
+}
+
+function clearHouseholdCookie(res: VercelResponse): void {
+  appendCookie(res, `${HOUSEHOLD_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0`);
 }
 
 async function requireMember(req: VercelRequest, minimum: 'owner' | 'member'): Promise<SessionUser> {
@@ -233,6 +304,8 @@ export default handler(async (req, res) => {
   if (action === 'switch')    { post(); return switchHousehold(req, res); }
   if (action === 'invite')    { return method === 'POST' ? createInvite(req, res) : readInvite(req, res); }
   if (action === 'join')      { post(); return acceptInvite(req, res); }
+  if (action === 'test-as')   { post(); return stepIn(req, res); }
+  if (action === 'test-back') { post(); return stepBack(req, res); }
 
   throw notFound(`אין נתיב כזה: /api/auth/${action}`);
 });

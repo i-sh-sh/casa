@@ -189,7 +189,7 @@ test('no handler takes its own connection', () => {
   assert.deepEqual(offenders, [], `these take an unscoped connection: ${offenders.join(', ')}`);
 });
 
-test('the household scope is opened in exactly four places', () => {
+test('the household scope is opened in exactly five places', () => {
   // The list is short on purpose and grows only with a reason written beside
   // the entry. Opening a scope is choosing whose data a piece of code is about,
   // so every place that does it is a place that could choose wrong.
@@ -212,6 +212,11 @@ test('the household scope is opened in exactly four places', () => {
     // has no session in it yet — so this is the one place that opens a scope
     // for a household on behalf of somebody who is about to be its owner.
     join('api', '_lib', 'auth.ts'),
+    // Filling the test couple's home with two months of data. Same reason as
+    // furnishing: the operator pressing the button is not a member of that
+    // home and must not become one, so the scope cannot come from the request.
+    // It only ever opens the home it has just created for `.invalid` people.
+    join('api', 'admin', '_testing.ts'),
   ].sort());
 });
 

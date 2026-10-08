@@ -214,7 +214,10 @@ test('two households may use the same names', options, async () => {
     // joined the unique index, the second one failed with a duplicate key —
     // and the message said nothing about tenancy.
     const groups = await client.query<{ count: number }>(
-      `SELECT COUNT(*)::int AS count FROM pg_class WHERE relname = 'category_groups_unique_name'`,
+      // `public` only: testing.test.ts builds its own schema in the same
+      // database, alongside this file, with an index of the same name.
+      `SELECT COUNT(*)::int AS count FROM pg_class
+        WHERE relname = 'category_groups_unique_name' AND relnamespace = 'public'::regnamespace`,
     );
     assert.equal(groups.rows[0]?.count, 1);
 

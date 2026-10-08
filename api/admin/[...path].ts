@@ -6,6 +6,7 @@ import { SCHEMA_SQL } from '../../db/schema.js';
 import { SEED_SQL } from './_seed.js';
 import { exportEverything, exportSheet, SHEET_NAMES } from './_export.js';
 import { pilotMetrics } from './_metrics.js';
+import { rebuildTestHomes, testingState } from './_testing.js';
 import { exportFilename } from '../../shared/csv.js';
 import { isOperator } from '../../shared/operators.js';
 import type { SetupFacts } from '../../shared/setup.js';
@@ -218,6 +219,23 @@ export default router([
     handle: async (ctx: Ctx) => {
       if (!isOperator(process.env.CASA_OPERATORS, ctx.user.email)) throw forbidden();
       return await pilotMetrics();
+    },
+  },
+  // The test people (shared/testing.ts). Operator-only by the same env check
+  // as metrics, and unscoped because they act on the household registry; the
+  // rebuild opens its own scope for the one home it fills.
+  {
+    method: 'GET', path: 'testing', role: 'viewer', unscoped: true,
+    handle: async (ctx: Ctx) => {
+      if (!isOperator(process.env.CASA_OPERATORS, ctx.user.email)) throw forbidden();
+      return await testingState();
+    },
+  },
+  {
+    method: 'POST', path: 'testing/rebuild', role: 'viewer', unscoped: true,
+    handle: async (ctx: Ctx) => {
+      if (!isOperator(process.env.CASA_OPERATORS, ctx.user.email)) throw forbidden();
+      return await rebuildTestHomes();
     },
   },
   // The home's own setup checklist (shared/setup.ts). Counts only, the same
