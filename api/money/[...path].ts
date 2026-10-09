@@ -4,7 +4,8 @@ import { query, one, transaction } from '../_lib/db.js';
 import { badRequest, conflict, notFound } from '../_lib/http.js';
 import { bool, date, int, num, oneOf, optionalDate, optionalInt, optionalNum, optionalStr, str } from '../_lib/validate.js';
 import { advanceDue, buildBudgetMonth, computeBalance, futureCommitments, monthKey, previousMonth, type InstallmentInput } from '../../shared/money.js';
-import type { Account, Category, Transaction } from '../../shared/types.js';
+import type { Account, Category, CategoryGroup, Transaction } from '../../shared/types.js';
+import { groupArchiveBlock } from '../../shared/arrange.js';
 import { downloadWorkbook, importWorkbook } from './_workbook.js';
 import { learnPayee } from './_payees.js';
 
@@ -56,6 +57,10 @@ async function listCategories(): Promise<Category[]> {
        LEFT JOIN category_groups g ON g.id = c.group_id
       ORDER BY g.sort_order NULLS LAST, g.id NULLS LAST, c.sort_order, c.id`,
   );
+}
+
+async function listGroups(): Promise<CategoryGroup[]> {
+  return query<CategoryGroup>(`SELECT * FROM category_groups ORDER BY sort_order, id`);
 }
 
 // ── The budget ───────────────────────────────────────────────────────────
@@ -406,35 +411,76 @@ export default router([
   { method: 'GET', path: 'categories', role: 'viewer', handle: listCategories },
   {
     method: 'POST', path: 'categories',
-    handle: async (ctx) => one<Category>(
-      `INSERT INTO categories (group_id, name, kind, commitment, monthly_target, icon, sort_order)
-       VALUES ($1, $2, $3, $4, $5, $6, COALESCE((SELECT MAX(sort_order) + 1 FROM categories WHERE group_id IS NOT DISTINCT FROM $1), 0))
-       RETURNING *, (SELECT name FROM category_groups WHERE id = $1) AS group_name`,
-      [
-        optionalInt(ctx.body['group_id'], 'קבוצה'),
-        str(ctx.body['name'], 'שם הקטגוריה', { max: 80 }),
-        oneOf(ctx.body['kind'], 'סוג', CATEGORY_KINDS, 'spending'),
-        oneOf(ctx.body['commitment'], 'רמת מחויבות', COMMITMENTS_IN, 'flexible'),
-        optionalNum(ctx.body['monthly_target'], 'יעד חודשי'),
-        optionalStr(ctx.body['icon'], 'אייקון', 20),
-      ],
-    ),
+    handle: async (ctx) => {
+      const groupId = optionalInt(ctx.body['group_id'], 'קבוצה');
+      const name = str(ctx.body['name'], 'שם הקטגוריה', { max: 80 });
+      // The same name in the same group is the same category. If it was put
+      // away, asking for it again brings it back with its history, the way
+      // the workbook import does, rather than refusing or making a twin.
+      const existing = await one<Category>(
+        `SELECT * FROM categories WHERE COALESCE(group_id, -1) = COALESCE($1::int, -1) AND lower(name) = lower($2)`,
+        [groupId, name],
+      );
+      if (existing && !existing.archived_at) throw conflict('כבר יש סעיף בשם הזה בקבוצה');
+      if (existing) {
+        return one<Category>(
+          `UPDATE categories SET archived_at = NULL WHERE id = $1
+           RETURNING *, (SELECT name FROM category_groups g WHERE g.id = categories.group_id) AS group_name`,
+          [existing.id],
+        );
+      }
+      return one<Category>(
+        `INSERT INTO categories (group_id, name, kind, commitment, monthly_target, icon, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, COALESCE((SELECT MAX(sort_order) + 1 FROM categories WHERE group_id IS NOT DISTINCT FROM $1), 0))
+         RETURNING *, (SELECT name FROM category_groups WHERE id = $1) AS group_name`,
+        [
+          groupId,
+          name,
+          oneOf(ctx.body['kind'], 'סוג', CATEGORY_KINDS, 'spending'),
+          oneOf(ctx.body['commitment'], 'רמת מחויבות', COMMITMENTS_IN, 'flexible'),
+          optionalNum(ctx.body['monthly_target'], 'יעד חודשי'),
+          optionalStr(ctx.body['icon'], 'אייקון', 20),
+        ],
+      );
+    },
   },
   {
     method: 'PATCH', path: 'categories/:id',
     handle: async (ctx) => {
+      const id = Number(ctx.params['id']);
+      const name = optionalStr(ctx.body['name'], 'שם', 80);
+      const groupId = optionalInt(ctx.body['group_id'], 'קבוצה');
+      if (name !== null && !name.trim()) throw badRequest('לסעיף צריך שם');
+      // A rename or a move that lands on a name the group already has would
+      // trip the unique index and come back as a server error. Said first,
+      // in words, instead.
+      if (name !== null || groupId !== null) {
+        const clash = await one(
+          `SELECT 1 FROM categories c, categories me
+            WHERE me.id = $1 AND c.id <> me.id
+              AND COALESCE(c.group_id, -1) = COALESCE($3::int, me.group_id, -1)
+              AND lower(c.name) = lower(COALESCE($2, me.name))`,
+          [id, name, groupId],
+        );
+        if (clash) throw conflict('כבר יש סעיף בשם הזה בקבוצה');
+      }
+      // Moved into another group, it goes to the end of it rather than
+      // keeping a position number that meant something in the old one.
       const row = await one<Category>(
         `UPDATE categories
             SET name = COALESCE($2, name), group_id = COALESCE($3, group_id),
+                sort_order = CASE WHEN $3::int IS NOT NULL AND $3::int IS DISTINCT FROM group_id
+                  THEN COALESCE((SELECT MAX(sort_order) + 1 FROM categories WHERE group_id = $3::int), 0)
+                  ELSE sort_order END,
                 commitment = COALESCE($8, commitment),
                 monthly_target = CASE WHEN $4::text = 'clear' THEN NULL ELSE COALESCE($5, monthly_target) END,
                 icon = COALESCE($6, icon),
                 archived_at = CASE WHEN $7::boolean IS TRUE THEN NOW() WHEN $7::boolean IS FALSE THEN NULL ELSE archived_at END
           WHERE id = $1 RETURNING *, (SELECT name FROM category_groups g WHERE g.id = categories.group_id) AS group_name`,
         [
-          Number(ctx.params['id']),
-          optionalStr(ctx.body['name'], 'שם', 80),
-          optionalInt(ctx.body['group_id'], 'קבוצה'),
+          id,
+          name?.trim() ?? null,
+          groupId,
           ctx.body['monthly_target'] === null ? 'clear' : '',
           optionalNum(ctx.body['monthly_target'], 'יעד חודשי'),
           optionalStr(ctx.body['icon'], 'אייקון', 20),
@@ -446,18 +492,88 @@ export default router([
       return row;
     },
   },
+  { method: 'GET', path: 'groups', role: 'viewer', handle: listGroups },
   {
     method: 'POST', path: 'groups',
     handle: async (ctx) => {
       const name = str(ctx.body['name'], 'שם הקבוצה', { max: 80 });
-      const row = await one(
+      // Same rule as a category: asking again for a group that was put away
+      // brings it back.
+      const existing = await one<CategoryGroup>(
+        `SELECT * FROM category_groups WHERE lower(name) = lower($1)`, [name],
+      );
+      if (existing && !existing.archived_at) throw conflict('כבר יש קבוצה בשם הזה');
+      if (existing) {
+        return one(`UPDATE category_groups SET archived_at = NULL WHERE id = $1 RETURNING *`, [existing.id]);
+      }
+      return one(
         `INSERT INTO category_groups (name, sort_order)
          VALUES ($1, COALESCE((SELECT MAX(sort_order) + 1 FROM category_groups), 0))
-         ON CONFLICT (name) DO NOTHING RETURNING *`,
+         RETURNING *`,
         [name],
       );
-      if (!row) throw conflict('כבר יש קבוצה בשם הזה');
+    },
+  },
+  {
+    method: 'PATCH', path: 'groups/:id',
+    handle: async (ctx) => {
+      const id = Number(ctx.params['id']);
+      const name = optionalStr(ctx.body['name'], 'שם הקבוצה', 80)?.trim() ?? null;
+      if (name !== null && !name) throw badRequest('לקבוצה צריך שם');
+      const archived = ctx.body['archived'] === undefined ? null : bool(ctx.body['archived']);
+      if (name !== null) {
+        const clash = await one(`SELECT 1 FROM category_groups WHERE id <> $1 AND lower(name) = lower($2)`, [id, name]);
+        if (clash) throw conflict('כבר יש קבוצה בשם הזה');
+      }
+      if (archived) {
+        const open = await one<{ n: number }>(
+          `SELECT COUNT(*)::int AS n FROM categories WHERE group_id = $1 AND archived_at IS NULL`, [id],
+        );
+        const block = groupArchiveBlock(open?.n ?? 0);
+        if (block) throw conflict(block);
+      }
+      const row = await one(
+        `UPDATE category_groups
+            SET name = COALESCE($2, name),
+                archived_at = CASE WHEN $3::boolean IS TRUE THEN NOW() WHEN $3::boolean IS FALSE THEN NULL ELSE archived_at END
+          WHERE id = $1 RETURNING *`,
+        [id, name, archived],
+      );
+      if (!row) throw notFound('הקבוצה לא נמצאה');
       return row;
+    },
+  },
+  {
+    // The whole order of one list at once, as the screen now shows it. Sent
+    // whole rather than as «swap these two» so a retried request lands on
+    // the same result instead of swapping them back.
+    method: 'POST', path: 'order',
+    handle: async (ctx) => {
+      const ids = (key: string) => {
+        const value = ctx.body[key];
+        if (value === undefined) return null;
+        if (!Array.isArray(value) || value.length > 500 || !value.every((v) => Number.isInteger(v))) {
+          throw badRequest('הסדר לא תקין');
+        }
+        return value as number[];
+      };
+      const groups = ids('groups');
+      const categories = ids('categories');
+      if (groups) {
+        await query(
+          `UPDATE category_groups g SET sort_order = o.ord
+             FROM unnest($1::int[]) WITH ORDINALITY AS o(id, ord) WHERE g.id = o.id`,
+          [groups],
+        );
+      }
+      if (categories) {
+        await query(
+          `UPDATE categories c SET sort_order = o.ord
+             FROM unnest($1::int[]) WITH ORDINALITY AS o(id, ord) WHERE c.id = o.id`,
+          [categories],
+        );
+      }
+      return { ok: true };
     },
   },
 

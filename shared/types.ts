@@ -73,6 +73,7 @@ export interface CategoryGroup {
   id: number;
   name: string;
   sort_order: number;
+  archived_at: string | null;
 }
 
 export interface Category {
@@ -123,6 +124,8 @@ export interface EnvelopeRow {
   spent: number;
   /** allocated − spent, for this month alone. Nothing carries. */
   available: number;
+  /** Archived, and still here because this month has something in it. */
+  archived: boolean;
 }
 
 export interface BudgetMonth {

@@ -237,11 +237,17 @@ export function buildBudgetMonth(params: {
   }
 
   const envelopes: EnvelopeRow[] = categories
-    .filter((c) => c.kind !== 'income' && !c.archived_at)
+    .filter((c) => c.kind !== 'income')
+    // An archived category leaves the budget only for months it has nothing
+    // in. Dropping it outright would drop its spending with it: archive
+    // «ארנונה» in March and February's flow shrinks by the bill, with the
+    // transactions still in the list and nowhere on this screen to add them up.
+    .filter((c) => !c.archived_at || allocated.has(c.id) || spent.has(c.id))
     .map((c) => {
       const put = round2(allocated.get(c.id) ?? 0);
       const took = round2(spent.get(c.id) ?? 0);
       return {
+        archived: c.archived_at != null,
         category_id: c.id,
         category_name: c.name,
         group_id: c.group_id,

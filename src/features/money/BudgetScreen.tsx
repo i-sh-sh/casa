@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { Link } from '../../lib/router.js';
-import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds } from '../../ui/kit.js';
+import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Explainable } from '../../ui/Explain.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
@@ -9,6 +9,7 @@ import { Bar, type Tone } from '../../ui/Bar.js';
 import { MonthStepper } from '../../ui/MonthStepper.js';
 import { FlowHero } from './FlowHero.js';
 import { MoneyTabs, useMoneyMonth } from './MoneyTabs.js';
+import { ArrangeSheet, NewCategorySheet } from './ArrangeSheet.js';
 import {
   COMMITMENTS, COMMITMENT_LABELS, COMMITMENT_NOTES,
   formatILS,
@@ -17,7 +18,7 @@ import {
   explainAhead, explainCommitment, explainEnvelopeSpent, explainFlow,
   explainGroup, explainIncome, explainSpent, explainUnbudgeted, explainUnfiled, explainUnplanned,
 } from '@shared/explain.js';
-import type { BudgetMonth, Category, Commitment, EnvelopeRow, Transaction } from '@shared/types.js';
+import type { BudgetMonth, Category, CategoryGroup, Commitment, EnvelopeRow, Transaction } from '@shared/types.js';
 
 interface Details { txs: Transaction[]; incomeIds: number[] }
 
@@ -69,7 +70,10 @@ export function BudgetScreen() {
   const budget = useAsync(() => api.get<BudgetMonth>('/money/budget', { month }), [month]);
   const [editing, setEditing] = useState<EnvelopeRow | null>(null);
   const [classifying, setClassifying] = useState(false);
+  const [arranging, setArranging] = useState(false);
+  const [addingTo, setAddingTo] = useState<{ id: number | null; name: string } | null>(null);
   const folds = useFolds('budget');
+  const toast = useToast();
   const details = useDetails(month);
 
   const data = budget.data;
@@ -113,8 +117,9 @@ export function BudgetScreen() {
 
             {data.envelopes.length === 0 && (
               <Empty
-                headline="אין עדיין קטגוריות"
-                hint="קטגוריה היא שם וסכום חודשי שאתם קובעים. אפשר להוסיף מ«הגדרות»."
+                headline="אין עדיין סעיפים"
+                hint="סעיף הוא שם וסכום חודשי שאתם קובעים."
+                action={<button className="btn" onClick={() => setArranging(true)}>סידור הסעיפים</button>}
               />
             )}
 
@@ -162,6 +167,17 @@ export function BudgetScreen() {
                     {envelopes.map((env) => (
                       <EnvelopeLine key={env.category_id} env={env} onEdit={() => setEditing(env)} />
                     ))}
+                    {/* Adding lives at the foot of the group it adds to, where
+                        the new row will appear — not behind a menu at the top. */}
+                    <button
+                      type="button"
+                      className="row"
+                      style={{ minHeight: 48, color: 'var(--ink-2)' }}
+                      onClick={() => setAddingTo({ id: envelopes[0]?.group_id ?? null, name: groupName })}
+                    >
+                      <span className="margin-col"><Icon name="plus" size={16} /></span>
+                      <span className="grow" style={{ textAlign: 'start', fontSize: 15 }}>סעיף חדש בקבוצה</span>
+                    </button>
                   </div>
                   <hr className="rule-2" />
                   <Explainable style={{ minHeight: 44, borderBottom: 0 }} explain={() => explainGroup(groupName, envelopes)}>
@@ -184,8 +200,12 @@ export function BudgetScreen() {
         {/* At the foot, with the other things done once a month rather than
             at the till — a ruled row, like every other place to go. */}
         <section className="section">
-          <h2>החודש בקובץ</h2>
+          <h2>הסעיפים והקובץ</h2>
           <div className="rows">
+            <button className="row" style={{ minHeight: 52 }} onClick={() => setArranging(true)}>
+              <span className="grow" style={{ textAlign: 'start' }}>סידור הסעיפים</span>
+              <span className="meta">שמות · קבוצות · ארכיון</span>
+            </button>
             <Link to="/budget/excel" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
               <span className="grow">ייבוא וייצוא לאקסל</span>
               <span className="meta">פירוט אשראי · קובץ התקציב</span>
@@ -201,19 +221,50 @@ export function BudgetScreen() {
         />
       )}
 
+      {arranging && (
+        <ArrangeSheet onClose={() => { setArranging(false); budget.reload(); }} />
+      )}
+
+      {addingTo && (
+        <NewCategorySheet
+          groupId={addingTo.id}
+          groupName={addingTo.name}
+          onClose={() => setAddingTo(null)}
+          onAdded={() => {
+            folds.reveal(addingTo.name);
+            setAddingTo(null);
+            budget.reload();
+          }}
+        />
+      )}
+
       {editing && data && (
         <AllocateSheet
           env={editing}
           month={month}
           explainSpent={async () => { const d = await details(); return explainEnvelopeSpent(data, editing, d.txs); }}
           onClose={() => setEditing(null)}
-          onSaved={() => {
+          onSaved={(landedIn) => {
             // The envelope that was just funded is inside a group that may be
             // shut, where the new number would be invisible. Nothing folds away
-            // what somebody just did.
-            folds.reveal(editing.group_name ?? 'ללא קבוצה');
+            // what somebody just did — and a category moved to another group
+            // opens that group, not the one it left.
+            folds.reveal(landedIn);
             setEditing(null);
             budget.reload();
+          }}
+          onArchived={() => {
+            const archived = editing;
+            setEditing(null);
+            budget.reload();
+            // An undo rather than a confirmation, as with ticking off the list:
+            // archiving is cheap to reverse, and a question before it is a tap
+            // on every correct use to guard the rare wrong one.
+            toast.show(`${archived.category_name} הועבר לארכיון`, {
+              undo: () => {
+                void api.patch(`/money/categories/${archived.category_id}`, { archived: false }).then(budget.reload);
+              },
+            });
           }}
         />
       )}
@@ -407,6 +458,7 @@ function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void })
           {' · הוצא '}<span className="n">{formatILS(env.spent, { symbol: false })}</span>
           {' מתוך '}<span className="n">{formatILS(env.allocated, { symbol: false })}</span>
           {over && <> · <span className="mark mark-red">חריגה</span></>}
+          {env.archived && ' · בארכיון'}
         </span>
       </span>
       <span className={`n amount ${over ? 'over' : ''}`} style={{ fontSize: 20 }}>
@@ -428,45 +480,57 @@ function EnvelopeLine({ env, onEdit }: { env: EnvelopeRow; onEdit: () => void })
  * it needs. «נשאר» underneath is live: it is what the figure in the box would
  * leave, so the answer is visible before the save rather than after it.
  */
-function AllocateSheet({ env, month, explainSpent, onClose, onSaved }: {
+function AllocateSheet({ env, month, explainSpent, onClose, onSaved, onArchived }: {
   env: EnvelopeRow;
   month: string;
   explainSpent: Parameters<typeof Explainable>[0]['explain'];
   onClose: () => void;
-  onSaved: () => void;
+  /** Called with the name of the group the category is in after the save. */
+  onSaved: (landedIn: string) => void;
+  onArchived: () => void;
 }) {
   const [allocated, setAllocated] = useState(String(env.allocated));
   const [commitment, setCommitment] = useState<Commitment>(env.commitment);
+  const [name, setName] = useState(env.category_name);
+  const [groupId, setGroupId] = useState(env.group_id);
+  const [archiveError, setArchiveError] = useState<string | null>(null);
+  const groups = useAsync(() => api.get<CategoryGroup[]>('/money/groups'));
+  const openGroups = (groups.data ?? []).filter((g) => !g.archived_at || g.id === env.group_id);
   const willBe = (Number(allocated) || 0) - env.spent;
+
+  const archive = async () => {
+    setArchiveError(null);
+    try {
+      await api.patch(`/money/categories/${env.category_id}`, { archived: true });
+      onArchived();
+    } catch (err) {
+      setArchiveError(err instanceof Error ? err.message : 'ההעברה לארכיון נכשלה');
+    }
+  };
 
   return (
     <Sheet title={env.category_name} onClose={onClose}>
       <AsyncForm
         submitLabel="שמירה"
         onSubmit={async () => {
-          await api.put(`/money/budget/${env.category_id}`, { month, allocated: Number(allocated) || 0 });
-          // The rung belongs to the category, not to the month, so it is a
-          // separate write — and only when it actually changed.
-          if (commitment !== env.commitment) {
-            await api.patch(`/money/categories/${env.category_id}`, { commitment });
+          if ((Number(allocated) || 0) !== env.allocated) {
+            await api.put(`/money/budget/${env.category_id}`, { month, allocated: Number(allocated) || 0 });
           }
-          onSaved();
+          // What belongs to the category rather than to the month is one
+          // separate write, and only with the fields that actually changed.
+          const changes: Record<string, unknown> = {};
+          if (commitment !== env.commitment) changes['commitment'] = commitment;
+          if (name.trim() && name.trim() !== env.category_name) changes['name'] = name.trim();
+          if (groupId !== env.group_id && groupId != null) changes['group_id'] = groupId;
+          if (Object.keys(changes).length > 0) {
+            await api.patch(`/money/categories/${env.category_id}`, changes);
+          }
+          const landed = groups.data?.find((g) => g.id === groupId)?.name ?? env.group_name ?? 'ללא קבוצה';
+          onSaved(landed);
         }}
       >
         <Field label="לתקצב החודש · ₪">
           <input className="input" type="number" inputMode="decimal" step="10" value={allocated} onChange={(e) => setAllocated(e.target.value)} autoFocus style={{ fontSize: 24 }} />
-        </Field>
-
-        {/* The classification the ladder groups by, editable here.
-            It used to arrive from the seed and could not be changed anywhere —
-            which made the ladder a statement about a list somebody else wrote.
-            Whether שכירות is rigid for this household is theirs to say. */}
-        <Field label="מה אפשר לעשות עם זה">
-          <select className="select" value={commitment} onChange={(e) => setCommitment(e.target.value as Commitment)}>
-            {COMMITMENTS.map((c) => (
-              <option key={c} value={c}>{COMMITMENT_LABELS[c]} — {COMMITMENT_NOTES[c]}</option>
-            ))}
-          </select>
         </Field>
 
         <div className="rows" style={{ marginBottom: 'var(--s5)' }}>
@@ -482,7 +546,68 @@ function AllocateSheet({ env, month, explainSpent, onClose, onSaved }: {
             </span>
           </div>
         </div>
+
+        {/* What the category is called and where it sits. The seed named
+            thirty of these so the first screen was not homework; that is a
+            fair offer only if every name can be changed where it is read. */}
+        <Field label="שם הסעיף">
+          <input className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+        </Field>
+
+        <Field label="בקבוצה">
+          <select
+            className="select"
+            value={groupId ?? ''}
+            onChange={(e) => setGroupId(e.target.value ? Number(e.target.value) : null)}
+            disabled={!groups.data}
+          >
+            {groupId == null && <option value="">ללא קבוצה</option>}
+            {openGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+          </select>
+        </Field>
+
+        {/* The classification the ladder groups by, editable here.
+            It used to arrive from the seed and could not be changed anywhere —
+            which made the ladder a statement about a list somebody else wrote.
+            Whether שכירות is rigid for this household is theirs to say. */}
+        <Field label="מה אפשר לעשות עם זה">
+          <select className="select" value={commitment} onChange={(e) => setCommitment(e.target.value as Commitment)}>
+            {COMMITMENTS.map((c) => (
+              <option key={c} value={c}>{COMMITMENT_LABELS[c]} — {COMMITMENT_NOTES[c]}</option>
+            ))}
+          </select>
+        </Field>
       </AsyncForm>
+
+      {/* Last and alone, below the save, in the one colour kept for deleting.
+          The sentence under it is the answer to «and what happens to what we
+          already spent there», asked before the tap rather than after. */}
+      {!env.archived && (
+        <div style={{ marginTop: 'var(--s5)', borderTop: '1px solid var(--rule)', paddingTop: 'var(--s4)' }}>
+          {archiveError && <ErrorNote message={archiveError} />}
+          <button type="button" className="btn btn-red btn-block" onClick={() => void archive()}>
+            להעביר לארכיון
+          </button>
+          <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+            התנועות שכבר נרשמו נשארות. הסעיף לא יופיע בחודשים שאין בהם כלום, ואפשר להחזיר אותו מ«סידור הסעיפים».
+          </p>
+        </div>
+      )}
+      {env.archived && archiveError && <ErrorNote message={archiveError} />}
+      {env.archived && (
+        <button
+          type="button"
+          className="btn btn-block"
+          style={{ marginTop: 'var(--s4)' }}
+          onClick={() => {
+            void api.patch(`/money/categories/${env.category_id}`, { archived: false })
+              .then(() => onSaved(env.group_name ?? 'ללא קבוצה'))
+              .catch((err: Error) => setArchiveError(err.message));
+          }}
+        >
+          להחזיר מהארכיון
+        </button>
+      )}
     </Sheet>
   );
 }
