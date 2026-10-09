@@ -589,10 +589,36 @@ export default router([
   {
     method: 'GET', path: 'payee-rules', role: 'viewer',
     handle: async () => query(
-      `SELECT r.payee_key, r.category_id FROM payee_rules r
+      `SELECT r.id, r.payee_key, r.payee, r.hits, r.category_id, c.name AS category_name FROM payee_rules r
          JOIN categories c ON c.id = r.category_id AND c.archived_at IS NULL
         ORDER BY r.updated_at DESC LIMIT 2000`,
     ),
+  },
+  // A rule is learned from every save and only ever pre-fills (see _payees.ts),
+  // so a wrong one used to file every new row from that payee wrong, silently,
+  // with nowhere to see why. These make it visible and correctable. Deleting is
+  // a real DELETE: a rule is neither money nor history, and the next save from
+  // that payee will teach a new one.
+  {
+    method: 'PATCH', path: 'payee-rules/:id',
+    handle: async (ctx) => {
+      const row = await one(
+        `UPDATE payee_rules SET category_id = $2, updated_at = NOW()
+          WHERE id = $1 AND EXISTS (SELECT 1 FROM categories WHERE id = $2 AND archived_at IS NULL)
+          RETURNING id, payee, category_id`,
+        [Number(ctx.params['id']), int(ctx.body['category_id'], 'סעיף')],
+      );
+      if (!row) throw notFound('הכלל או הסעיף לא נמצאו');
+      return row;
+    },
+  },
+  {
+    method: 'DELETE', path: 'payee-rules/:id',
+    handle: async (ctx) => {
+      const row = await one(`DELETE FROM payee_rules WHERE id = $1 RETURNING id`, [Number(ctx.params['id'])]);
+      if (!row) throw notFound('הכלל לא נמצא');
+      return row;
+    },
   },
   { method: 'POST', path: 'transactions', handle: createTransaction },
   { method: 'PATCH', path: 'transactions/:id', handle: updateTransaction },

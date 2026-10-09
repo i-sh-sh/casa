@@ -255,6 +255,29 @@ function testingBanner(req: VercelRequest, email: string): { persona: string; di
   return { persona: persona.key, display_name: persona.display_name };
 }
 
+/**
+ * Changing «איך לקרוא לך» and the home's name after the day they were typed.
+ *
+ * Both used to be asked once, at sign-up, and could never be touched again —
+ * and both are printed on screens every day: the name in «מי שילם» and «בינינו»,
+ * the home's in the settings header and the switcher. A typo at sign-up was
+ * forever. The home's name is the owner's, like everything else about the home.
+ */
+async function updateProfile(req: VercelRequest, res: VercelResponse): Promise<void> {
+  const member = await requireMember(req, 'member');
+  const input = parseBody(req);
+  if (input['display_name'] !== undefined) {
+    const name = str(input['display_name'], 'איך לקרוא לך', { max: 40 });
+    await query(`UPDATE users SET display_name = $2 WHERE email = $1`, [member.email, name]);
+  }
+  if (input['household_name'] !== undefined) {
+    if (member.role !== 'owner') throw forbidden('רק בעלי הבית משנים את שמו');
+    const name = str(input['household_name'], 'שם הבית', { max: 80 });
+    await query(`UPDATE households SET name = $2 WHERE id = $1`, [member.household_id, name]);
+  }
+  json(res, 200, { ok: true });
+}
+
 // ── Small helpers ────────────────────────────────────────────────────────
 
 /**
@@ -304,6 +327,7 @@ export default handler(async (req, res) => {
   if (action === 'switch')    { post(); return switchHousehold(req, res); }
   if (action === 'invite')    { return method === 'POST' ? createInvite(req, res) : readInvite(req, res); }
   if (action === 'join')      { post(); return acceptInvite(req, res); }
+  if (action === 'profile')   { post(); return updateProfile(req, res); }
   if (action === 'test-as')   { post(); return stepIn(req, res); }
   if (action === 'test-back') { post(); return stepBack(req, res); }
 

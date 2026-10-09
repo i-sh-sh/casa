@@ -19,7 +19,7 @@
 export type IconName =
   | 'home' | 'cart' | 'pantry' | 'ledger' | 'dials'
   | 'plus' | 'minus' | 'box' | 'box-ticked' | 'close'
-  | 'back' | 'search' | 'alert' | 'lock' | 'chevron' | 'up' | 'down';
+  | 'back' | 'search' | 'alert' | 'lock' | 'chevron' | 'up' | 'down' | 'more';
 
 const PATHS: Record<IconName, string> = {
   // A house reduced to a gable and a wall. No door, no chimney, no window —
@@ -78,6 +78,10 @@ const PATHS: Record<IconName, string> = {
   // not as the fold's «open» — the two sit in the same list.
   up: 'M12 19.5V5.5M6 11.5l6-6 6 6',
   down: 'M12 4.5v14M6 12.5l6 6 6-6',
+
+  // «More about this row»: three short strokes rather than three dots, since
+  // a dot drawn with a 1.75px butt-capped line is a square smudge.
+  more: 'M5 12h2.5M10.75 12h2.5M16.5 12H19',
 };
 
 export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {
