@@ -466,6 +466,14 @@ a { color: inherit; }
 .tab[aria-pressed='true'] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
 .tab .n { font-size: 0.95em; color: var(--ink-3); }
 
+/* The money screens' own pages. Links rather than toggles, so the current one
+   is marked the way the bottom nav marks it; an equal third each, because this
+   strip is navigation pressed with a thumb, not a filter read in passing. */
+a.tab { text-decoration: none; display: flex; align-items: center; justify-content: center; }
+.tab[aria-current='page'] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
+.money-tabs { margin-bottom: var(--s2); }
+.money-tabs .tab { flex: 1; font-size: 16px; }
+
 /* ── Sheet ───────────────────────────────────────────────────────────── */
 
 .sheet-backdrop {

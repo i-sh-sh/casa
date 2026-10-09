@@ -8,6 +8,8 @@ import { HomeScreen } from '../features/home/HomeScreen.js';
 import { BudgetScreen } from '../features/money/BudgetScreen.js';
 import { WorkbookScreen } from '../features/money/WorkbookScreen.js';
 import { TransactionsScreen } from '../features/money/TransactionsScreen.js';
+import { AccountsScreen } from '../features/money/AccountsScreen.js';
+import { MONEY_PATHS } from '../features/money/MoneyTabs.js';
 import { PantryScreen } from '../features/pantry/PantryScreen.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
@@ -18,19 +20,26 @@ import { api } from '../lib/api.js';
 import { useVersion } from '../lib/version.js';
 import { afterPrefix } from '@shared/hebrew.js';
 
-const TABS: { to: string; icon: IconName; label: string }[] = [
+// «כסף» rather than «תקציב»: the tab now holds the budget, the transactions
+// and the accounts, and lights up on any of them.
+const TABS: { to: string; icon: IconName; label: string; also?: string[] }[] = [
   { to: '/',         icon: 'home',   label: 'הבית' },
   { to: '/shopping', icon: 'cart',   label: 'קניות' },
   { to: '/pantry',   icon: 'pantry', label: 'מזווה' },
-  { to: '/budget',   icon: 'ledger', label: 'תקציב' },
+  { to: '/budget',   icon: 'ledger', label: 'כסף', also: MONEY_PATHS },
   { to: '/settings', icon: 'dials',  label: 'הגדרות' },
 ];
 
 function Nav({ openItems }: { openItems: number }) {
+  const { path } = useRouter();
   return (
     <nav className="nav" aria-label="ניווט ראשי">
       {TABS.map((tab) => (
-        <Link key={tab.to} to={tab.to}>
+        <Link
+          key={tab.to}
+          to={tab.to}
+          {...(tab.also ? { 'aria-current': tab.also.some((p) => path.startsWith(p)) ? 'page' : undefined } : {})}
+        >
           <Icon name={tab.icon} size={20} />
           <span>{tab.label}</span>
           {/* A tally in the margin, not a filled badge. It counts, so it is set
@@ -52,6 +61,7 @@ function Screen() {
   if (path.startsWith('/budget/excel')) return <WorkbookScreen />;
   if (path.startsWith('/budget')) return <BudgetScreen />;
   if (path.startsWith('/transactions')) return <TransactionsScreen />;
+  if (path.startsWith('/accounts')) return <AccountsScreen />;
   if (path.startsWith('/settings')) return <SettingsScreen />;
   if (path.startsWith('/admin')) return <AdminScreen />;
   return (

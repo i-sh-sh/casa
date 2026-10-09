@@ -175,7 +175,7 @@ svg{display:block;margin:0 auto 2px}
         <div class="row step" style="--i:1"><span class="g"><span class="t">מזווה</span><span class="m">מה יש בבית, ומה עומד להיגמר</span></span></div>
         <div class="row step" style="--i:2"><span class="g"><span class="t">קניות</span><span class="m">רשימה שכותבת את עצמה</span></span></div>
       </div>
-      <div class="nav"><span class="cur">הבית</span><span>קניות</span><span>מזווה</span><span>תקציב</span><span>הגדרות</span></div>
+      <div class="nav"><span class="cur">הבית</span><span>קניות</span><span>מזווה</span><span>כסף</span><span>הגדרות</span></div>
     </div>
     <div class="say">
       <div class="idx">01</div>
@@ -201,7 +201,7 @@ svg{display:block;margin:0 auto 2px}
     <div class="say">
       <div class="idx">02 · הבית שלכם</div>
       <h2>בית אחד, שני אנשים</h2>
-      <p>הראשון שנכנס פותח בית והופך ל<b>בעל הבית</b>. את השני מזמינים ב<b>קישור</b> — «הגדרות» ← «קישור הזמנה לשותף». הקישור תקף שבוע ולפעם אחת, ומי שפותח אותו מצטרף מיד.</p>
+      <p>הראשון שנכנס פותח בית והופך ל<b>בעל הבית</b>. את השני מזמינים ב<b>קישור</b> — «הגדרות» ← «להזמין לבית». הקישור תקף שבוע ולפעם אחת, ומי שפותח אותו מצטרף מיד.</p>
       <p>התפקיד יושב בקישור עצמו: <b>«שותף» רואה ומשנה, «צופה» רואה ואינו משנה.</b> קישור לשותף נותן גישה לכל הכסף של הבית — שולחים אותו רק למי שמתכוונים לשתף איתו את הפנקס.</p>
       <div class="why">בתים מופרדים <b>במסד עצמו</b>, לא בקוד: לכל טבלה מדיניות אבטחת שורות של Postgres, והמערכת מסרבת לעבוד מול מסד שבו ההפרדה אינה פעילה.</div>
     </div>
@@ -527,27 +527,26 @@ svg{display:block;margin:0 auto 2px}
     </div>
   </section>
 
-  <!-- 17 · הגדרות ─────────────────────────────────────────────────────── -->
+  <!-- 17 · חשבונות ────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
-      <div class="head">הגדרות</div>
+      <div class="head">כסף · חשבונות</div>
       <div class="body">
-        <div class="sect step" style="--i:0">חשבונות · ₪</div>
+        <div class="sect step" style="--i:0">יתרות · ₪</div>
         <div class="row step" style="--i:0"><span class="g"><span class="t">עובר ושב</span><span class="m">בנק</span></span><span class="amt">12,430</span></div>
         <div class="row step" style="--i:0"><span class="g"><span class="t">מזומן</span></span><span class="amt">300</span></div>
-        <div class="sect step" style="--i:1">מי בבית</div>
-        <div class="row step" style="--i:1"><span class="g"><span class="t">ישראל</span></span><span class="label">בעל הבית</span></div>
-        <div class="row step" style="--i:2"><span class="g"><span class="t">נעה</span></span><span class="label">שותף</span></div>
-        <div class="sect step" style="--i:3">מסד הנתונים</div>
-        <div class="row step" style="--i:3"><span class="g label">מצב הסכימה</span><span>מעודכנת</span></div>
+        <div class="sect step" style="--i:1">חיובים קבועים · ₪</div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">ארנונה</span><span class="m">כל חודשיים · בעוד 5 ימים</span></span><span class="amt">684</span></div>
+        <div class="sect step" style="--i:2">בינינו · ₪</div>
+        <div class="row step" style="--i:2"><span class="g label">נעה מעבירה לישראל</span><span class="amt">420</span></div>
       </div>
     </div>
     <div class="say">
-      <div class="idx">17 · הגדרות</div>
-      <h2>חשבונות, אנשים, ומסד</h2>
+      <div class="idx">17 · חשבונות</div>
+      <h2>איפה הכסף, מה יורד, ומי חייב למי</h2>
       <p><b>יתרת חשבון מחושבת</b> — יתרת פתיחה ועוד כל תנועה מאז. אף פעם לא מספר שמור: יתרה שמורה ורשימת תנועות מתפצלות, ואז אי אפשר לסמוך על אף אחת מהן.</p>
-      <p><b>מי בבית</b> — כל מי שהצטרף, והתפקיד שלו. בעל הבית הוא היחיד שמזמין, והיחיד שמשנה תפקיד אחר כך: «ממתין לאישור» סוגר גישה בלי למחוק אדם מהבית.</p>
-      <div class="why">אחרי כל עדכון של המערכת — «הרצת מיגרציה». היא בטוחה לחזור עליה כמה פעמים שרוצים ולא מוחקת נתונים.</div>
+      <p><b>חיובים קבועים</b> — ארנונה, ועד בית, ביטוח. «שולם» רושם את ההוצאה ומעביר את החיוב לתאריך הבא. <b>בינינו</b> — ההוצאות המשותפות מתחלקות שווה בשווה, וכשמישהו מעביר לשני רושמים את זה כאן.</p>
+      <div class="why">אחרי כל עדכון של המערכת — «הרצת מיגרציה» מ«הגדרות» ← «מסד הנתונים». היא בטוחה לחזור עליה ולא מוחקת נתונים.</div>
     </div>
   </section>
 

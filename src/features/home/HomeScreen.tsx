@@ -81,7 +81,13 @@ export function HomeScreen() {
     bills.reload(); low.reload();
   };
 
+  // Envelopes already past what was put in them. The budget screen says so on
+  // a shut group; this is the one money errand worth a line on the front page,
+  // because it is the one that gets worse by waiting.
+  const overspent = (budget.data?.envelopes ?? []).filter((e) => e.available < 0);
+
   const quiet = !settling && !failure
+    && overspent.length === 0
     && (shopping.data?.length ?? 0) === 0
     && (expiring.data?.length ?? 0) === 0
     && soonBills.length === 0;
@@ -117,7 +123,7 @@ export function HomeScreen() {
         {quiet && (
           <div className="empty">
             <div className="headline">אין מה לעשות היום.</div>
-            <p>אין מה לקנות, שום דבר לא עומד להתקלקל, ואין חשבון שמחכה.</p>
+            <p>אין מה לקנות, שום דבר לא עומד להתקלקל, אין חריגה ואין חשבון שמחכה.</p>
           </div>
         )}
 
@@ -149,9 +155,18 @@ export function HomeScreen() {
                     `${e.product_name} (${e.days_left <= 0 ? 'היום' : `${e.days_left} ימים`})`))}
                 />
               )}
-              {soonBills.length > 0 && (
+              {overspent.length > 0 && (
                 <Entry
                   to="/budget"
+                  label="חריגה בתקציב"
+                  count={overspent.length}
+                  tone="red"
+                  body={run(overspent.map((e) => `${e.category_name} (${formatILS(-e.available, { symbol: false })} מעל)`))}
+                />
+              )}
+              {soonBills.length > 0 && (
+                <Entry
+                  to="/accounts"
                   label="חשבונות שמגיעים"
                   count={soonBills.length}
                   tone="red"

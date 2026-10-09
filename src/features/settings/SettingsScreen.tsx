@@ -1,150 +1,86 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
 import { useSession } from '../../lib/session.js';
-import { AsyncForm, ErrorNote, Field, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
-import { Icon } from '../../ui/Icon.js';
+import { ErrorNote, Loading, Sheet, useAsync, useToast } from '../../ui/kit.js';
 import { TopBar } from '../../ui/TopBar.js';
-import { formatILS } from '@shared/money.js';
 import { useVersion } from '../../lib/version.js';
 import { shouldUpdate } from '@shared/version.js';
-import type { Account, Role, User } from '@shared/types.js';
+import type { Role, User } from '@shared/types.js';
 import { HouseholdSwitcher } from '../household/HouseholdGate.js';
 import { Link } from '../../lib/router.js';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'בעל הבית', member: 'שותף', viewer: 'צופה', pending: 'ממתין לאישור',
 };
-const KIND_LABELS: Record<string, string> = {
-  bank: 'בנק', cash: 'מזומן', credit: 'אשראי', savings: 'חיסכון',
-};
 
+/**
+ * Settings, grouped the way a phone's own settings are: by who it is about.
+ *
+ * This screen had become the place for whatever had no other home — account
+ * balances first, then the people, the theme, a paragraph of release notes,
+ * seven export buttons, and the database. The balances moved to «כסף», where
+ * the money is. What is left is in a few groups of ruled rows, and the long
+ * things (what is new, the export files, the database) open in a sheet from a
+ * row instead of sitting open on the page.
+ */
 export function SettingsScreen() {
   const { user, households, signOut, isOperator } = useSession();
-  const accounts = useAsync(() => api.get<Account[]>('/money/accounts'));
-  const [addingAccount, setAddingAccount] = useState(false);
   const isOwner = user?.role === 'owner';
-
-  const open = (accounts.data ?? []).filter((a) => !a.archived_at);
-  const net = open.reduce((sum, a) => sum + a.balance, 0);
+  const [sheet, setSheet] = useState<'export' | 'database' | null>(null);
 
   return (
     <>
       <TopBar title="הגדרות" subtitle={user?.household_name ?? user?.email} />
 
       <div className="page">
-        <section className="section">
-          <h2>חשבונות <span className="count">· ₪</span></h2>
-          <div className="rows">
-            {open.map((a) => (
-              <div className="row" key={a.id}>
-                <span className="grow">
-                  <span className="title" style={{ display: 'block' }}>{a.name}</span>
-                  <span className="meta">{KIND_LABELS[a.kind] ?? a.kind}</span>
-                </span>
-                <span className={`n amount ${a.balance < 0 ? 'over' : ''}`}>
-                  {formatILS(a.balance, { symbol: false })}
-                </span>
-              </div>
-            ))}
-            {accounts.loading && <Loading />}
-          </div>
-          {open.length > 0 && (
-            <>
-              <hr className="rule-2" />
-              <div className="row" style={{ borderBottom: 0, minHeight: 44 }}>
-                <span className="grow label">סך הכול</span>
-                <span className={`n amount ${net < 0 ? 'over' : ''}`} style={{ fontWeight: 600 }}>
-                  {formatILS(net, { symbol: false })}
-                </span>
-              </div>
-            </>
-          )}
-          <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s3)' }} onClick={() => setAddingAccount(true)}>
-            <Icon name="plus" size={16} /> הוספת חשבון
-          </button>
-        </section>
-
-        {user && <HouseholdSwitcher households={households} current={user.household_id ?? 0} />}
-
         {isOwner && <MembersSection currentEmail={user.email} />}
         {isOwner && <InviteSection />}
+        {user && <HouseholdSwitcher households={households} current={user.household_id ?? 0} />}
 
         <ThemeSection />
 
-        <VersionSection />
-
-        <ExportSection isOwner={isOwner} />
-
-        {/* The operator runs the system from its own screen; an owner who is not
-            one still needs the migration button after a deploy. */}
-        {!isOperator && isOwner && <DatabaseSection />}
-
-        {/* The rest is places to go, not things to read: one ruled row each,
-            the whole row the link, the way every list in the app works. */}
+        {/* Places to go, not things to read: one ruled row each, the whole row
+            the link, the way every list in the app works. */}
         <section className="section">
-          <h2>עוד</h2>
+          <h2>הנתונים</h2>
           <div className="rows">
-            {isOperator && (
-              <Link to="/admin" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
-                <span className="grow">ניהול המערכת</span>
-                <span className="meta">כל הבתים ומסד הנתונים</span>
-              </Link>
-            )}
-            {/* A plain <a>, not a router Link: the guide is a static page served
-                beside the app, not a screen inside it. */}
-            <a href="/guide" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
-              <span className="grow">איך המערכת עובדת</span>
-              <span className="meta">מדריך קצר</span>
-            </a>
+            <Link to="/budget/excel" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
+              <span className="grow">ייבוא וייצוא לאקסל</span>
+              <span className="meta">פירוט אשראי · קובץ התקציב</span>
+            </Link>
+            <button className="row" style={{ minHeight: 52 }} onClick={() => setSheet('export')}>
+              <span className="grow">הורדת הנתונים</span>
+              <span className="meta">CSV · גיבוי מלא</span>
+            </button>
+            {/* The operator runs the system from its own screen; an owner who
+                is not one still needs the migration button after a deploy. */}
+            {!isOperator && isOwner && <DatabaseRow onOpen={() => setSheet('database')} />}
+          </div>
+        </section>
+
+        <AboutSection isOperator={isOperator} />
+
+        <section className="section">
+          <div className="rows">
             <button className="row" style={{ minHeight: 52 }} onClick={() => void signOut()}>
               <span className="grow">יציאה</span>
+              <span className="meta n">{user?.email}</span>
             </button>
           </div>
         </section>
       </div>
 
-      {addingAccount && (
-        <Sheet title="חשבון חדש" onClose={() => setAddingAccount(false)}>
-          <AccountForm onSaved={() => { setAddingAccount(false); accounts.reload(); }} />
+      {sheet === 'export' && (
+        <Sheet title="הורדת הנתונים" onClose={() => setSheet(null)}>
+          <ExportSection isOwner={isOwner} />
+        </Sheet>
+      )}
+      {sheet === 'database' && (
+        <Sheet title="מסד הנתונים" onClose={() => setSheet(null)}>
+          <DatabaseSection />
         </Sheet>
       )}
     </>
-  );
-}
-
-export function AccountForm({ onSaved, initialName = '', initialKind = 'bank' }: {
-  onSaved: () => void; initialName?: string; initialKind?: string;
-}) {
-  const [name, setName] = useState(initialName);
-  const [kind, setKind] = useState(initialKind);
-  const [opening, setOpening] = useState('0');
-
-  return (
-    <AsyncForm
-      submitLabel="הוספה"
-      disabled={!name.trim()}
-      onSubmit={async () => {
-        await api.post('/money/accounts', { name, kind, opening_balance: Number(opening) || 0 });
-        onSaved();
-      }}
-    >
-      <Field label="שם">
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="עובר ושב" />
-      </Field>
-      <div className="row-2">
-        <Field label="סוג">
-          <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-        </Field>
-        <Field label="יתרת פתיחה · ₪">
-          <input className="input" type="number" inputMode="decimal" step="0.01" value={opening} onChange={(e) => setOpening(e.target.value)} />
-        </Field>
-      </div>
-      <p className="meta" style={{ marginBottom: 'var(--s4)' }}>
-        יתרת פתיחה היא איפה החשבון עמד ביום שהתחלנו לעקוב. היתרה המוצגת היא היא ועוד כל תנועה מאז — לעולם לא מספר שמור.
-      </p>
-    </AsyncForm>
   );
 }
 
@@ -180,29 +116,70 @@ function ThemeSection() {
   );
 }
 
-function VersionSection() {
+/**
+ * The version, what changed in it, the guide and — for the operator — the
+ * system screen. The release notes are a paragraph that changes once a week
+ * and is read once; they open from the version row rather than sitting under
+ * it on every visit.
+ */
+function AboutSection({ isOperator }: { isOperator: boolean }) {
   const { currentVersion, manifest, reload } = useVersion();
+  const [notes, setNotes] = useState(false);
   const serverVersion = manifest?.version;
   const isOutdated = manifest && shouldUpdate(currentVersion, manifest) !== 'none';
 
   return (
     <section className="section">
-      <h2>גרסה</h2>
-      <div className="row" style={{ minHeight: 44, borderBottom: 0 }}>
-        <span className="grow n">{currentVersion}</span>
-        {isOutdated
-          ? <span className="mark">יש גרסה <span className="n">{serverVersion}</span></span>
-          : <span className="meta">{serverVersion ? 'מעודכנת' : '…'}</span>}
+      <h2>על קאסה</h2>
+      <div className="rows">
+        <button className="row" style={{ minHeight: 52 }} disabled={!manifest?.notes} onClick={() => setNotes(true)}>
+          <span className="grow">
+            גרסה <span className="n">{currentVersion}</span>
+          </span>
+          {isOutdated
+            ? <span className="mark">יש גרסה <span className="n">{serverVersion}</span></span>
+            : <span className="meta">{manifest?.notes ? 'מה חדש' : serverVersion ? 'מעודכנת' : '…'}</span>}
+        </button>
+        {/* A plain <a>, not a router Link: the guide is a static page served
+            beside the app, not a screen inside it. */}
+        <a href="/guide" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
+          <span className="grow">איך המערכת עובדת</span>
+          <span className="meta">מדריך קצר</span>
+        </a>
+        {isOperator && (
+          <Link to="/admin" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
+            <span className="grow">ניהול המערכת</span>
+            <span className="meta">כל הבתים ומסד הנתונים</span>
+          </Link>
+        )}
       </div>
-      {manifest?.notes && (
-        <p className="meta">{manifest.notes}</p>
-      )}
       {isOutdated && (
         <button className="btn btn-block btn-primary" style={{ marginTop: 'var(--s3)' }} onClick={reload}>
           עדכון לגרסה {serverVersion}
         </button>
       )}
+      {notes && manifest?.notes && (
+        <Sheet title={`מה חדש · ${manifest.version}`} onClose={() => setNotes(false)}>
+          <p style={{ lineHeight: 1.7 }}>{manifest.notes}</p>
+        </Sheet>
+      )}
     </section>
+  );
+}
+
+/**
+ * The database's state in one row, so a schema that needs a migration is
+ * visible from settings without opening anything.
+ */
+function DatabaseRow({ onOpen }: { onOpen: () => void }) {
+  const health = useAsync(() => api.get<{ ok: boolean; missing: string[] }>('/admin/health'));
+  return (
+    <button className="row" style={{ minHeight: 52 }} onClick={onOpen}>
+      <span className="grow">מסד הנתונים</span>
+      {health.data && !health.data.ok
+        ? <span className="mark mark-red">צריך מיגרציה</span>
+        : <span className="meta">{health.data ? 'מעודכן' : '…'}</span>}
+    </button>
   );
 }
 
@@ -264,21 +241,20 @@ function ExportSection({ isOwner }: { isOwner: boolean }) {
   const sheets = useAsync(() => api.get<{ name: string; label: string }[]>('/admin/export/sheets'));
 
   return (
-    <section className="section">
-      <h2>ייצוא <span className="count">· CSV</span></h2>
+    <>
       {/* Six one-word rows with the same button at the end of each were six
           rows of furniture around six words. The words are the buttons now. */}
-      <div className="chips">
+      <div className="chips" style={{ marginTop: 0 }}>
         {(sheets.data ?? []).map((sheet) => (
           <a className="btn btn-sm" key={sheet.name} href={`/api/admin/export?sheet=${sheet.name}`}>{sheet.label}</a>
         ))}
         {isOwner && <a className="btn btn-sm" href="/api/admin/export/all">גיבוי מלא · JSON</a>}
       </div>
       {sheets.loading && <Loading />}
-      <p className="meta" style={{ marginTop: 'var(--s2)' }}>
-        נפתח באקסל ובגיליונות של גוגל. הגיבוי המלא הוא לשחזור.
+      <p className="meta" style={{ marginTop: 'var(--s3)' }}>
+        קובצי CSV נפתחים באקסל ובגיליונות של גוגל. הגיבוי המלא הוא לשחזור.
       </p>
-    </section>
+    </>
   );
 }
 
