@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  advanceDue, buildBudgetMonth, cashFlow, computeBalance, futureCommitments,
+  advanceDue, billsPerMonth, buildBudgetMonth, daysUntil, dueLabel, cashFlow, computeBalance, futureCommitments,
   formatILS, monthKey, nextMonth, previousMonth, round2,
 } from '../../shared/money.ts';
 import type { Category } from '../../shared/types.ts';
@@ -366,4 +366,23 @@ test('a series whose charges stopped arriving is not still owed', () => {
   ], '2026-09-01');
   assert.deepEqual(ahead.series, []);
   assert.equal(ahead.total, 0);
+});
+
+test('a bill costs a month its share of the cycle, not its whole amount', () => {
+  assert.equal(billsPerMonth([
+    { amount_estimate: 5200, cadence: 'monthly', active: true },
+    { amount_estimate: 684, cadence: 'bimonthly', active: true },
+    { amount_estimate: 2400, cadence: 'yearly', active: true },
+    { amount_estimate: 900, cadence: 'monthly', active: false },
+  ]), 5200 + 342 + 200);
+});
+
+test('due dates are said in days, across a month boundary', () => {
+  assert.equal(daysUntil('2026-11-02', '2026-10-30'), 3);
+  assert.equal(daysUntil('2026-10-30', '2026-10-30'), 0);
+  assert.equal(daysUntil('2026-10-28', '2026-10-30'), -2);
+  assert.equal(dueLabel(0), 'היום');
+  assert.equal(dueLabel(1), 'מחר');
+  assert.equal(dueLabel(5), 'בעוד 5 ימים');
+  assert.equal(dueLabel(-2), 'לפני 2 ימים');
 });

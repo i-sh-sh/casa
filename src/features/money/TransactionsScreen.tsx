@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { api } from '../../lib/api.js';
-import { Link } from '../../lib/router.js';
 import { useSession } from '../../lib/session.js';
 import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { MonthStepper } from '../../ui/MonthStepper.js';
-import { formatILS, monthKey } from '@shared/money.js';
+import { MoneyTabs, useMoneyMonth } from './MoneyTabs.js';
+import { formatILS } from '@shared/money.js';
 import { nameKey } from '@shared/budget-workbook.js';
 import type { Account, Category, Transaction } from '@shared/types.js';
 
@@ -25,14 +25,23 @@ const todayISO = () => new Date().toISOString().slice(0, 10);
  * you, which is exactly when a list of payees is worth reading.
  */
 export function TransactionsScreen() {
-  const [month, setMonth] = useState(() => monthKey(new Date()));
+  const [month, setMonth] = useMoneyMonth();
   const transactions = useAsync(() => api.get<Transaction[]>('/money/transactions', { month }), [month]);
+  // «לא שויך» on the budget lands here narrowed to exactly those rows: the
+  // budget can say they exist, and this is the only screen that can file them.
+  const [unfiledOnly, setUnfiledOnly] = useState(
+    () => new URLSearchParams(location.search).get('show') === 'unfiled',
+  );
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Transaction | null>(null);
   const toast = useToast();
   const folds = useFolds('transactions');
 
-  const items = transactions.data ?? [];
+  const all = transactions.data ?? [];
+  const isUnfiled = (t: Transaction) => t.category_id === null && t.transfer_id === null;
+  const unfiledCount = all.filter(isUnfiled).length;
+  const narrowed = unfiledOnly && unfiledCount > 0;
+  const items = narrowed ? all.filter(isUnfiled) : all;
   const byDay = items.reduce<Record<string, Transaction[]>>((acc, t) => {
     (acc[t.occurred_on] ??= []).push(t);
     return acc;
@@ -41,19 +50,31 @@ export function TransactionsScreen() {
 
   return (
     <>
-      <TopBar
-        title="תנועות"
-        subtitle={`${items.length} החודש`}
-        action={<Link to="/budget" className="btn btn-sm">תקציב</Link>}
-      />
+      <TopBar title="כסף" />
 
       <div className="page">
+        <MoneyTabs />
         <MonthStepper month={month} onChange={setMonth} />
+
+        {/* The month's to-do, as a narrowing rather than a section: the rows
+            are already on this screen, in their days. One ruled row, there
+            only when something needs filing, so a tidy month shows nothing
+            extra — a second strip of tabs under the money tabs was three
+            rules stacked before the first transaction. */}
+        {unfiledCount > 0 && (
+          <div className="rows">
+            <button className="row" style={{ minHeight: 52 }} aria-pressed={narrowed} onClick={() => setUnfiledOnly(!narrowed)}>
+              <span className="margin-col figure-col n">{unfiledCount}</span>
+              <span className="grow">לא שויכו לקטגוריה</span>
+              <span className="mark mark-blue">{narrowed ? 'להציג הכול' : 'להציג רק אותן'}</span>
+            </button>
+          </div>
+        )}
 
         {transactions.loading && !transactions.data && <Loading />}
         {transactions.error && <ErrorNote message={transactions.error} onRetry={transactions.reload} />}
 
-        {!transactions.loading && items.length === 0 && (
+        {!transactions.loading && all.length === 0 && (
           <Empty
             headline="אין תנועות בחודש הזה"
             action={<button className="btn" onClick={() => setAdding(true)}>רישום הוצאה</button>}
@@ -76,8 +97,10 @@ export function TransactionsScreen() {
                   {formatILS(dayTotal, { sign: true, symbol: false })}
                 </span>
               }
-              open={folds.isOpen(day, false)}
-              onToggle={() => folds.toggle(day, false)}
+              // Narrowed to the rows that need filing, every day is open: the
+              // point of the filter is to see them, and it can only open.
+              open={folds.isOpen(day, narrowed)}
+              onToggle={() => folds.toggle(day, narrowed)}
             >
               <div className="rows">
                 {dayItems.map((t) => (
@@ -301,7 +324,7 @@ export function TransactionSheet({ transaction, onClose, onSaved }: {
         </div>
         {!openAccounts.length && !accounts.loading && (
           <p style={{ color: 'var(--red)', fontSize: 15, marginBottom: 'var(--s3)' }}>
-            אין חשבונות. פתחו אחד ב«הגדרות» לפני רישום תנועה.
+            אין חשבונות. פתחו אחד ב«כסף» ← «חשבונות» לפני רישום תנועה.
           </p>
         )}
       </AsyncForm>

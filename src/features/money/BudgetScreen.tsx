@@ -8,9 +8,10 @@ import { TopBar } from '../../ui/TopBar.js';
 import { Bar, type Tone } from '../../ui/Bar.js';
 import { MonthStepper } from '../../ui/MonthStepper.js';
 import { FlowHero } from './FlowHero.js';
+import { MoneyTabs, useMoneyMonth } from './MoneyTabs.js';
 import {
   COMMITMENTS, COMMITMENT_LABELS, COMMITMENT_NOTES,
-  formatILS, monthKey,
+  formatILS,
 } from '@shared/money.js';
 import {
   explainAhead, explainCommitment, explainEnvelopeSpent, explainFlow,
@@ -64,7 +65,7 @@ function useDetails(month: string) {
  * average — along with rollover, which was never from the method at all.
  */
 export function BudgetScreen() {
-  const [month, setMonth] = useState(() => monthKey(new Date()));
+  const [month, setMonth] = useMoneyMonth();
   const budget = useAsync(() => api.get<BudgetMonth>('/money/budget', { month }), [month]);
   const [editing, setEditing] = useState<EnvelopeRow | null>(null);
   const [classifying, setClassifying] = useState(false);
@@ -79,12 +80,10 @@ export function BudgetScreen() {
 
   return (
     <>
-      <TopBar
-        title="תקציב"
-        action={<Link to="/transactions" className="btn btn-sm">תנועות</Link>}
-      />
+      <TopBar title="כסף" />
 
       <div className="page">
+        <MoneyTabs />
         <MonthStepper month={month} onChange={setMonth} />
 
         {budget.loading && !data && <Loading />}
@@ -183,10 +182,16 @@ export function BudgetScreen() {
         )}
 
         {/* At the foot, with the other things done once a month rather than
-            at the till. */}
-        <Link to="/budget/excel" className="btn btn-block" style={{ marginTop: 'var(--gap-over)' }}>
-          ייבוא וייצוא לאקסל
-        </Link>
+            at the till — a ruled row, like every other place to go. */}
+        <section className="section">
+          <h2>החודש בקובץ</h2>
+          <div className="rows">
+            <Link to="/budget/excel" className="row" style={{ textDecoration: 'none', minHeight: 52 }}>
+              <span className="grow">ייבוא וייצוא לאקסל</span>
+              <span className="meta">פירוט אשראי · קובץ התקציב</span>
+            </Link>
+          </div>
+        </section>
       </div>
 
       {classifying && data && (
@@ -336,7 +341,7 @@ function Warnings({ data, details }: { data: BudgetMonth; details: () => Promise
       {data.unfiled !== 0 && (
         <Explainable style={{ minHeight: 48 }} explain={async () => { const d = await details(); return explainUnfiled(data, d.txs, d.incomeIds); }}>
           <span className="grow" style={{ fontSize: 15 }}>
-            לא שויך לקטגוריה · <Link to="/transactions" style={{ color: 'var(--blue)' }}>לשייך</Link>
+            לא שויך לקטגוריה · <Link to="/transactions?show=unfiled" style={{ color: 'var(--blue)' }}>לשייך</Link>
           </span>
           <span className="n amount">{formatILS(data.unfiled, { symbol: false })}</span>
         </Explainable>

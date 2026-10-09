@@ -106,6 +106,37 @@ export function nextMonth(month: string): string {
 
 const CADENCE_MONTHS: Record<string, number> = { monthly: 1, bimonthly: 2, quarterly: 3, yearly: 12 };
 
+export const CADENCE_LABELS: Record<string, string> = {
+  monthly: 'כל חודש', bimonthly: 'כל חודשיים', quarterly: 'כל רבעון', yearly: 'כל שנה',
+};
+
+/**
+ * What the active bills take out of an average month.
+ *
+ * A bimonthly ארנונה of 684 is 342 a month, a yearly insurance of 2,400 is 200.
+ * Summing the raw estimates instead would say a quarterly bill costs its whole
+ * amount every month — the one figure on the screen nobody could recompute.
+ */
+export function billsPerMonth(bills: { amount_estimate: number; cadence: string; active: boolean }[]): number {
+  return round2(bills.reduce(
+    (sum, b) => (b.active ? sum + b.amount_estimate / (CADENCE_MONTHS[b.cadence] ?? 1) : sum),
+    0,
+  ));
+}
+
+/** Whole days from `today` to `due`, both `YYYY-MM-DD`. Negative once it has passed. */
+export function daysUntil(due: string, today: string): number {
+  return Math.round((Date.parse(`${due}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+}
+
+/** «היום», «מחר», «בעוד 5 ימים», «לפני 2 ימים» — said, not computed by the reader. */
+export function dueLabel(days: number): string {
+  if (days === 0) return 'היום';
+  if (days === 1) return 'מחר';
+  if (days === -1) return 'אתמול';
+  return days > 0 ? `בעוד ${days} ימים` : `לפני ${-days} ימים`;
+}
+
 /**
  * The next date a recurring bill falls due.
  *
