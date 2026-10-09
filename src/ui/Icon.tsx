@@ -19,7 +19,7 @@
 export type IconName =
   | 'home' | 'cart' | 'pantry' | 'ledger' | 'dials'
   | 'plus' | 'minus' | 'box' | 'box-ticked' | 'close'
-  | 'back' | 'search' | 'alert' | 'lock' | 'chevron';
+  | 'back' | 'search' | 'alert' | 'lock' | 'chevron' | 'up' | 'down';
 
 const PATHS: Record<IconName, string> = {
   // A house reduced to a gable and a wall. No door, no chimney, no window —
@@ -73,6 +73,11 @@ const PATHS: Record<IconName, string> = {
   // Two segments, mitred at the point, so at 16px it stays a drawn angle rather
   // than softening into a curve.
   chevron: 'M5.5 9 12 15.5 18.5 9',
+
+  // Moving a row one place. A shaft under the head so it reads as «move»,
+  // not as the fold's «open» — the two sit in the same list.
+  up: 'M12 19.5V5.5M6 11.5l6-6 6 6',
+  down: 'M12 4.5v14M6 12.5l6 6 6-6',
 };
 
 export function Icon({ name, size = 20, className }: { name: IconName; size?: number; className?: string }) {
