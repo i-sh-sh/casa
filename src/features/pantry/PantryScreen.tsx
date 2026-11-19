@@ -3,6 +3,7 @@ import { api } from '../../lib/api.js';
 import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
+import { KitchenTabs } from '../kitchen/KitchenTabs.js';
 import { AISLES, expiryState } from '@shared/pantry.js';
 import { ReceiptSheet } from './ReceiptSheet.js';
 import type { Product } from '@shared/types.js';
@@ -83,12 +84,14 @@ export function PantryScreen() {
   return (
     <>
       <TopBar
-        title="מזווה"
+        title="מטבח"
         subtitle={low.length ? `${low.length} נגמרים` : `${all.length} מוצרים`}
         action={<button className="btn btn-sm" onClick={() => setReceipt(true)}>קבלה מהסופר</button>}
       />
 
       <div className="page">
+        <KitchenTabs />
+
         <div className="tabs">
           <button className="tab" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>
             הכול <span className="n">{all.length}</span>

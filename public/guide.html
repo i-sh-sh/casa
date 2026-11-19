@@ -160,7 +160,7 @@ svg{display:block;margin:0 auto 2px}
   <div class="top">
     <div class="wordmark">קאסה</div>
     <div class="grow"><span class="label">המדריך</span></div>
-    <span class="count n" id="clock">1 / 18</span>
+    <span class="count n" id="clock">1 / 19</span>
   </div>
 
   <main class="stage" id="stage">
@@ -184,168 +184,167 @@ svg{display:block;margin:0 auto 2px}
       <div class="why">העיקרון שמנחה הכול: מערכת שדורשת עבודה כדי להישאר מעודכנת — לא תישאר מעודכנת.</div>
     </div>
   </section>
-
-  <!-- 02 · הבית שלכם ──────────────────────────────────────────────────── -->
+  <!-- 02 · הבית שלכם ──────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">הגדרות</div>
       <div class="body">
-        <div class="sect step" style="--i:0">מי בבית</div>
-        <div class="row step" style="--i:0"><span class="g"><span class="t">ישראל</span><span class="m">shsh@…</span></span><span class="label">בעל הבית</span></div>
-        <div class="row step" style="--i:1"><span class="g"><span class="t">נעה</span><span class="m">noa@…</span></span><span class="label" style="border:1px solid var(--ink);padding:4px 8px">שותף</span></div>
-        <div class="sect step" style="--i:2">הזמנה</div>
-        <div class="mini step" style="--i:2">קישור הזמנה לשותף</div>
-        <div class="mini pulse" style="--i:3">קישור לצופה בלבד</div>
+        <div class="sect step" style="--i:0">אנחנו</div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">איך לקרוא לך</span></span><span class="m">ישראל</span></div>
+        <div class="sect step" style="--i:1">מי בבית</div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">ישראל</span><span class="m">shsh@…</span></span><span class="label">בעל הבית</span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">נעה</span><span class="m">noa@…</span></span><span class="label" style="border:1px solid var(--ink);padding:4px 8px">שותף</span></div>
+        <div class="sect step" style="--i:3">להזמין לבית</div>
+        <div class="mini pulse" style="--i:3">שליחה בוואטסאפ</div>
       </div>
     </div>
     <div class="say">
       <div class="idx">02 · הבית שלכם</div>
       <h2>בית אחד, שני אנשים</h2>
-      <p>הראשון שנכנס פותח בית והופך ל<b>בעל הבית</b>. את השני מזמינים ב<b>קישור</b> — «הגדרות» ← «להזמין לבית». הקישור תקף שבוע ולפעם אחת, ומי שפותח אותו מצטרף מיד.</p>
-      <p>התפקיד יושב בקישור עצמו: <b>«שותף» רואה ומשנה, «צופה» רואה ואינו משנה.</b> קישור לשותף נותן גישה לכל הכסף של הבית — שולחים אותו רק למי שמתכוונים לשתף איתו את הפנקס.</p>
-      <div class="why">בתים מופרדים <b>במסד עצמו</b>, לא בקוד: לכל טבלה מדיניות אבטחת שורות של Postgres, והמערכת מסרבת לעבוד מול מסד שבו ההפרדה אינה פעילה.</div>
+      <p>הראשון שנכנס פותח בית והופך ל<b>בעל הבית</b>. את השני מזמינים בקישור — «הגדרות» ← «להזמין לבית», ומשם <b>ישר לוואטסאפ</b>. מי שפותח אותו רואה מי הזמין אותו, ומצטרף מיד.</p>
+      <p><b>«שותף» רואה ומשנה, «צופה» רק רואה.</b> הקישור תקף שבוע ולפעם אחת.</p>
+      <p>«איך לקרוא לך» נשאל בכניסה, ואפשר לשנות אותו — וגם את שם הבית — בראש ההגדרות.</p>
+      <div class="why">בתים מופרדים <b>במסד עצמו</b>, לא בקוד: לכל טבלה מדיניות אבטחת שורות של Postgres.</div>
     </div>
   </section>
-
-  <!-- 03 · מסך הבית ───────────────────────────────────────────────────── -->
-  <section class="scene" data-dur="8">
+  <!-- 03 · מסך הבית ──────────────────── -->
+  <section class="scene" data-dur="9">
     <div class="phone">
-      <div class="head">בוקר טוב</div>
-      <div class="sub">מה קורה בבית</div>
+      <div class="head" style="display:flex;justify-content:space-between;align-items:center">בוקר טוב, ישראל <span class="mini" style="margin:0;padding:4px 10px;background:var(--ink);color:var(--paper)">+ הוצאה</span></div>
       <div class="body">
         <div class="hero step" style="--i:0">
           <div class="label">תזרים החודש</div>
           <div class="fig over">−₪1,200</div>
-          <div class="m" style="margin-top:6px">נכנס <span class="n">₪8,500</span> · הוצא <span class="n">₪9,700</span></div>
+          <div class="m" style="margin-top:6px">הוצא <span class="n">₪9,700</span> · נכנס <span class="n">₪8,500</span></div>
         </div>
-        <div class="sect step" style="--i:1">לקנות <span class="n">4</span></div>
-        <div class="row step" style="--i:1"><span class="g"><span class="t">חלב · לחם · ביצים · קפה</span><span class="mark-blue">2 מהם נגמרו במזווה</span></span></div>
-        <div class="sect step" style="--i:2;color:var(--red);border-bottom-color:var(--red)">להשתמש לפני שיתקלקל <span class="n">1</span></div>
-        <div class="row step" style="--i:2"><span class="g"><span class="t">קוטג׳ (2 ימים)</span></span></div>
+        <div class="sect step" style="--i:1">היום</div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">לקנות</span><span class="m">חלב · לחם · ביצים</span></span><span class="n">3</span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t" style="color:var(--red)">חריגה בתקציב</span><span class="m">חשמל (112 מעל)</span></span><span class="n">1</span></div>
+        <div class="row pulse" style="--i:3"><span class="g"><span class="t" style="color:var(--red)">חשבונות שמגיעים</span><span class="m">ארנונה · ₪684</span></span><span class="n">1</span></div>
       </div>
     </div>
     <div class="say">
       <div class="idx">03 · מסך הבית</div>
       <h2>מה צריך תשומת לב היום</h2>
-      <p>המסך הראשון מראה <b>רק דברים שיש עליהם פעולה</b>: משהו לקנות, משהו להשתמש בו לפני שיתקלקל, חשבון שמגיע, מישהו שצריך להחזיר לו.</p>
-      <p>סעיף שאין לו מה לומר — <b>פשוט לא מודפס</b>. וכשאין כלום, המסך אומר את זה במפורש במקום להציג לוח מחוונים ריק.</p>
+      <p>המסך הראשון מראה <b>רק דברים שיש עליהם פעולה</b>: מה לקנות, מה להשתמש בו לפני שיתקלקל, איפה חרגתם, איזה חשבון מגיע. שורה שאין לה מה לומר פשוט לא מודפסת.</p>
+      <p><b>«+ הוצאה»</b> יושב למעלה, לחיצה אחת מכל מקום. ובית חדש מקבל כאן גם את «להקים את הבית»: ארבעה צעדים, ומה שכבר נעשה מסומן לבד.</p>
     </div>
   </section>
-
-  <!-- 04 · החודש ──────────────────────────────────────────────────────── -->
+  <!-- 04 · החודש ──────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
-      <div class="head">תקציב</div>
-      <div class="sub">ספטמבר</div>
+      <div class="head">כסף</div>
+      <div class="sub">תקציב · אוקטובר</div>
       <div class="body">
         <div class="hero step" style="--i:0">
-          <div class="label">תזרים חודשי</div>
+          <div class="label">תזרים החודש</div>
           <div class="fig over">−₪1,200</div>
+          <div style="display:flex;height:8px;margin:8px 0 4px"><i style="flex:1;background:var(--red)"></i></div>
+          <div class="m">הוצא <span class="n" style="border-bottom:1px dotted">₪9,700</span> · נכנס <span class="n" style="border-bottom:1px dotted">₪8,500</span></div>
         </div>
-        <div class="sect step" style="--i:1">החודש · ₪</div>
-        <div class="row step" style="--i:1"><span class="g label">נכנס</span><span class="amt">14,000</span></div>
-        <div class="row step" style="--i:2"><span class="g label">תוקצב</span><span class="amt">15,200</span></div>
-        <div class="row pulse" style="--i:3"><span class="g label">לא תוקצב</span><span class="amt over">−1,200</span></div>
+        <div class="sect step" style="--i:1">הוצא · ₪9,700</div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">סופר</span></span><span class="amt">2,140</span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">שכר דירה</span></span><span class="amt">5,200</span></div>
+        <div class="row pulse" style="--i:3"><span class="g"><span class="t">לא שויך לקטגוריה</span></span><span class="amt">75</span></div>
       </div>
     </div>
     <div class="say">
       <div class="idx">04 · החודש</div>
-      <h2>שלושה מספרים, וחיסור אחד</h2>
-      <p>מה שנכנס, מה שתוקצב, וההפרש. אם ההפרש שלילי — תקצבתם יותר ממה שיש, וזה נאמר במילים ולא מוכפל בשלוש שנים.</p>
-      <p>כל מספר במסך הזה הוא סכום שהקלדתם, או חיסור בין שני סכומים שגם הם על המסך.</p>
-      <div class="why">היה כאן פעם חישוב שהכפיל גירעון ב־12 וב־36. הוא היה משכנע, והוא היה תמרון רטורי בלבוש של מדידה — לצד מספרים שהבית באמת הקליד.</div>
+      <h2>מה נכנס, מה יצא</h2>
+      <p>המספר הגדול הוא <b>תזרים</b>: מה שנכנס החודש פחות מה שיצא. כל שקל שיצא נספר — גם תנועה שעוד לא שויכה לקטגוריה, כדי שהמספר לא ייצא נחמד יותר מהאמת.</p>
+      <p><b>לחיצה על כל מספר</b> פותחת ממה הוא מורכב — השורות, והחיבור. אין מספר שצריך להאמין לו.</p>
+      <div class="why">היה כאן פעם חישוב שהכפיל גירעון ב־12 וב־36. הוא היה משכנע, ובדיוק לכן הוא יצא: מספר שאיש בבית לא הקליד, לצד מספרים שכן.</div>
     </div>
   </section>
-
-  <!-- 05 · הסולם ──────────────────────────────────────────────────────── -->
+  <!-- 05 · לאן הולכת ההכנסה ──────────────────── -->
   <section class="scene" data-dur="12">
     <div class="phone">
-      <div class="head">איפה יש גמישות</div>
-      <div class="sub">הוקצה ₪</div>
+      <div class="head">לאן הולכת ההכנסה</div>
+      <div class="sub">₪</div>
       <div class="body">
-        <div class="row step" style="--i:0"><span class="g"><span class="t">קשיחות</span><span class="meter"><i style="width:38%"></i></span><span class="m">קבועות, או שקשה לשנות</span></span><span class="amt">3,570</span></div>
-        <div class="row step" style="--i:1"><span class="g"><span class="t">גמישות</span><span class="meter"><i style="width:37%"></i></span><span class="m">חייבים לשלם משהו</span></span><span class="amt">3,500</span></div>
-        <div class="row pulse" style="--i:2"><span class="g"><span class="t">נזילות</span><span class="meter"><i style="width:16%"></i></span><span class="m">כאן באמת נחסך חודש</span></span><span class="amt">1,450</span></div>
-        <div class="row step" style="--i:3"><span class="g"><span class="t">לא צפויות</span><span class="meter"><i style="width:2%"></i></span></span><span class="amt">200</span></div>
-        <div class="warn step" style="--i:4">לבלת״מ מוקצים <span class="n">2%</span>. מומלץ <span class="n">5%</span> — חסרים <span class="n">₪260</span>.</div>
+        <div class="step" style="--i:0;display:flex;height:12px;gap:2px;margin:6px 0 10px"><i style="flex:38;background:var(--ink)"></i><i style="flex:37;background:var(--ink-2)"></i><i style="flex:16;background:var(--ink-3)"></i><i style="flex:2;background:var(--rule-blue)"></i><i style="flex:7;border:1px solid var(--rule)"></i></div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">קשיחות</span></span><span class="m n">38%</span><span class="amt">3,570</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">גמישות</span></span><span class="m n">37%</span><span class="amt">3,500</span></div>
+        <div class="row pulse" style="--i:2"><span class="g"><span class="t">נזילות</span></span><span class="m n">16%</span><span class="amt">1,450</span></div>
+        <div class="row step" style="--i:3"><span class="g"><span class="t">לא תוקצב</span></span><span class="amt">620</span></div>
+        <div class="warn step" style="--i:4">לא צפויות <span class="n">2%</span> מהחודש · מומלץ <span class="n">5%</span> · חסר <span class="n">260</span></div>
       </div>
     </div>
     <div class="say">
-      <div class="idx">05 · הסולם</div>
+      <div class="idx">05 · לאן הולכת ההכנסה</div>
       <h2>לא «לצמצם» — <span dir="rtl">לדעת איפה</span></h2>
-      <p>כל קטגוריה מסווגת לפי <b>כמה שליטה יש לכם עליה</b>: קשיחה, גמישה, נזילה, או לא צפויה.</p>
-      <p>«לצמצם הוצאות» זו לא עצה. «מתוך ₪9,700 — ₪3,570 קשיחות ו־₪1,450 נזילות» זו כן, כי היא מצביעה על החלק שאפשר באמת להזיז.</p>
-      <div class="why">בלת״מ היא הקטגוריה שרוב התקציבים משמיטים, ולכן רוב התקציבים נשברים. חתונה, רופא שיניים, טלפון שנשבר — אף פעם לא אותו דבר, ואף פעם לא באמת הפתעה ש<i>משהו</i> קרה.</div>
+      <p>כל סעיף מסווג לפי <b>כמה שליטה יש לכם עליו</b>: קשיח, גמיש, נזיל, או לא צפוי. הפס הוא ההכנסה, מחולקת לפי הסיווג של מה שתקצבתם, והנייר הריק בסופו הוא מה שעוד לא קיבל ייעוד.</p>
+      <p>«לצמצם הוצאות» זו לא עצה. «מתוך ₪9,700 — ₪1,450 נזילות» זו כן. את הסיווג משנים ב«לסווג את הסעיפים».</p>
+      <div class="why">לבלת״מ — חתונה, רופא שיניים, טלפון שנשבר — רוב התקציבים לא משאירים כלום, ולכן הם נשברים. מתחת ל־5% זה נאמר בשורה אחת.</div>
     </div>
   </section>
-
-  <!-- 06 · מעטפות ─────────────────────────────────────────────────────── -->
+  <!-- 06 · מעטפות ──────────────────── -->
   <section class="scene" data-dur="11">
     <div class="phone">
-      <div class="head">קבועות</div>
+      <div class="head">מעטפות</div>
       <div class="sub">נשאר ₪</div>
       <div class="body">
-        <div class="row step" style="--i:0"><span class="g"><span class="t">ביטוח רכב</span><span class="meter"><i style="width:0%"></i></span><span class="m">הוצא <span class="n">0</span> מתוך <span class="n">250</span></span></span><span class="amt">250</span></div>
-        <div class="row step" style="--i:1"><span class="g"><span class="t">ארנונה</span><span class="meter"><i style="width:62%"></i></span><span class="m">הוצא <span class="n">248</span> מתוך <span class="n">400</span></span></span><span class="amt">152</span></div>
-        <div class="row pulse" style="--i:2"><span class="g"><span class="t">חשמל</span><span class="meter over"><i style="width:100%"></i></span><span class="m">הוצא <span class="n">412</span> מתוך <span class="n">300</span> · <span class="mark-red">חריגה</span></span></span><span class="amt over">−112</span></div>
-        <hr class="rule2 step" style="--i:3">
-        <div class="row step" style="--i:3"><span class="g label">סך הקבוצה</span><span class="amt" style="font-weight:600">290</span></div>
+        <div class="sect step" style="--i:0;display:flex">יומיום <span class="n" style="color:var(--ink-3);font-weight:400">&nbsp;4</span><span style="flex:1"></span><span class="n">1,180</span></div>
+        <div class="sect step" style="--i:1;display:flex">קבועות <span class="n" style="color:var(--ink-3);font-weight:400">&nbsp;3</span>&nbsp;<span class="mark-red">חריגה</span><span style="flex:1"></span><span class="n">290</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">ארנונה</span><span class="meter"><i style="width:62%"></i></span><span class="m">קשיחות · הוצא <span class="n">248</span> מתוך <span class="n">400</span></span></span><span class="amt">152</span></div>
+        <div class="row pulse" style="--i:2"><span class="g"><span class="t">חשמל</span><span class="meter over"><i style="width:100%"></i></span><span class="m">גמישות · הוצא <span class="n">412</span> מתוך <span class="n">300</span></span></span><span class="amt over">−112</span></div>
+        <div class="row step" style="--i:3"><span class="g"><span class="m">+ &nbsp;סעיף חדש בקבוצה</span></span></div>
       </div>
     </div>
     <div class="say">
       <div class="idx">06 · מעטפות</div>
       <h2>כמה עוד מותר על זה</h2>
-      <p>לכל קטגוריה יש מעטפה. המספר הגדול בכל שורה הוא <b>כמה נשאר</b> — לא כמה הוצאתם. בנק כבר אומר לכם כמה הוצאתם; רק מעטפה אומרת כמה עוד מותר.</p>
-      <p><b>כל חודש עומד בפני עצמו.</b> «נשאר» הוא מה שתקצבתם החודש פחות מה שהוצאתם החודש. לא יותר, ולא משהו שנגרר מאוגוסט.</p>
-      <div class="why">היתרות התגלגלו כאן פעם בין חודשים. זה חזק יותר על הנייר, ובפועל הפך את המסך לבלתי קריא: קטגוריה שקיבלה ₪200 יכלה להראות ₪800 «נשאר», והתשובה למה ישבה חצי שנה אחורה.</div>
+      <p>לכל סעיף מעטפה, והמספר הגדול הוא <b>כמה נשאר</b> — לא כמה הוצאתם. הקבוצות נפתחות סגורות, וכל קבוצה סגורה עדיין אומרת כמה נשאר בה, ו«חריגה» אם יש.</p>
+      <p><b>כל חודש עומד בפני עצמו:</b> מה שתקצבתם החודש פחות מה שהוצאתם החודש.</p>
+      <div class="why">היתרות התגלגלו כאן פעם בין חודשים. זה חזק יותר על הנייר, ובפועל קטגוריה שקיבלה ₪200 הראתה ₪800 «נשאר», והתשובה למה ישבה חצי שנה אחורה.</div>
     </div>
   </section>
-
-  <!-- 07 · כמה לתקצב ──────────────────────────────────────────────────── -->
-  <section class="scene" data-dur="10">
+  <!-- 07 · הסעיף ──────────────────── -->
+  <section class="scene" data-dur="11">
     <div class="phone">
-      <div class="head">קפה ומסעדות</div>
+      <div class="head">ארנונה</div>
       <div class="body">
         <div class="label step" style="--i:0;margin-top:4px">לתקצב החודש · ₪</div>
-        <div class="row step" style="--i:0;border-bottom:1px solid var(--ink)"><span class="g n" style="font-size:22px">900</span></div>
-        <div class="row step" style="--i:1"><span class="g label">הוצא החודש</span><span class="amt">742</span></div>
-        <hr class="rule2 step" style="--i:2">
-        <div class="row pulse" style="--i:2"><span class="g label">יישאר</span><span class="amt" style="font-size:22px;font-weight:600">158</span></div>
+        <div class="row step" style="--i:0;border-bottom:1px solid var(--ink)"><span class="g n" style="font-size:22px">400</span></div>
+        <div class="row step" style="--i:1"><span class="g label">הוצא החודש</span><span class="amt">248</span></div>
+        <hr class="rule2 step" style="--i:1">
+        <div class="row pulse" style="--i:2"><span class="g label">יישאר</span><span class="amt" style="font-size:22px;font-weight:600">152</span></div>
+        <div class="row step" style="--i:3"><span class="g label">שם הסעיף</span><span>ארנונה</span></div>
+        <div class="row step" style="--i:3"><span class="g label">בקבוצה</span><span>קבועות</span></div>
+        <div class="mini step" style="--i:4;border-color:var(--red);color:var(--red)">להעביר לארכיון</div>
       </div>
     </div>
     <div class="say">
-      <div class="idx">07 · כמה לתקצב</div>
+      <div class="idx">07 · הסעיף</div>
       <h2>החיסור קורה מול העיניים</h2>
-      <p>מקלידים סכום, ומיד רואים מה הוא משאיר: <b>900 פחות 742 זה 158</b>. שלושת המספרים על אותו מסך, והתשובה לפני השמירה ולא אחריה.</p>
-      <p>אין כאן כפתור שממלא את הסכום בשבילכם — לא ממוצע, לא יעד, לא «מילוי החודש».</p>
-      <div class="why">היו כאן שלושה כאלה. כל אחד מהם הקליד לכם מספר לתיבה, וכל אחד מהם היה מספר שאיש בבית לא בחר — באותו גופן בדיוק כמו אלה שכן.</div>
+      <p>לחיצה על סעיף פותחת אותו. מקלידים סכום, ומיד רואים מה הוא משאיר: <b>400 פחות 248 זה 152</b> — לפני השמירה ולא אחריה. אין כפתור שממלא את הסכום בשבילכם.</p>
+      <p>באותו מקום <b>משנים שם, מעבירים קבוצה, או מעבירים לארכיון</b>. הסעיפים הם שלכם, לא של מי שבנה את האפליקציה. סעיף חדש — בתחתית כל קבוצה; הסדר — ב«סידור הסעיפים».</p>
+      <div class="why">ארכיון לא מוחק כסף: סעיף בארכיון נשאר בכל חודש שיש בו תנועה שלו, ואפשר להחזיר אותו.</div>
     </div>
   </section>
-
-  <!-- 08 · תנועות ─────────────────────────────────────────────────────── -->
+  <!-- 08 · תנועות ──────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
-      <div class="head">תנועה חדשה</div>
+      <div class="head">הוצאה חדשה</div>
       <div class="body">
         <div class="row step" style="--i:0"><span class="g label">סכום · ₪</span><span class="n" style="font-size:22px">412</span></div>
-        <div class="row step" style="--i:1"><span class="g label">למי</span><span>שופרסל</span></div>
-        <div class="row step" style="--i:1"><span class="g label">קטגוריה</span><span>סופר</span></div>
-        <div class="row step" style="--i:2"><span class="g label">תאריך</span><span class="n">08/09</span></div>
-        <div class="row pulse" style="--i:3"><span class="g label">מי שילם</span><span>ישראל</span></div>
+        <div class="row step" style="--i:1"><span class="g label">איפה</span><span>שופרסל</span></div>
+        <div class="row pulse" style="--i:1"><span class="g label">סעיף</span><span><span class="mark-blue">סופר</span></span></div>
+        <div class="row step" style="--i:2"><span class="g label">מי שילם</span><span>ישראל</span></div>
         <div style="display:flex;gap:8px;margin-top:10px">
-          <span class="mini pulse" style="--i:4;flex:1;background:var(--ink);color:var(--paper)">משותף</span>
-          <span class="mini step" style="--i:4;flex:1">אישי</span>
+          <span class="mini step" style="--i:3;flex:1;background:var(--ink);color:var(--paper)">משותף</span>
+          <span class="mini step" style="--i:3;flex:1">אישי</span>
         </div>
       </div>
     </div>
     <div class="say">
       <div class="idx">08 · תנועות</div>
       <h2>מי שילם, ועל חשבון מי</h2>
-      <p>לכל תנועה יש <b>«מי שילם»</b>, וזה לא בהכרח מי שרשם אותה. בלי השדה הזה יודעים כמה הבית הוציא ולא יודעים מי בחיסרון.</p>
-      <p><b>«משותף»</b> נכנס לאיזון בינינו. <b>«אישי»</b> לא נכנס אליו לעולם — מתנה שקניתם אחד לשני היא לא חוב.</p>
+      <p>בית עסק שכבר סיווגתם פעם <b>מציע את הסעיף לבד</b>. אם הוא לומד לא נכון, מתקנים ב«הגדרות» ← «בתי עסק שזוהו».</p>
+      <p><b>«מי שילם»</b> הוא לא בהכרח מי שרשם. <b>«משותף»</b> נכנס לחשבון בינינו; <b>«אישי»</b> לעולם לא — מתנה שקניתם אחד לשני היא לא חוב.</p>
+      <div class="why">ההקלדה הידנית היא החולשה של כל אפליקציית תקציב, ולכן גם הייבוא מהאשראי (בהמשך) עובר דרך אותם בתי עסק שזוהו.</div>
     </div>
   </section>
-
   <!-- 09 · תיקון ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
@@ -371,31 +370,47 @@ svg{display:block;margin:0 auto 2px}
       <div class="why">מחיקה שואלת פעם אחת, ואומרת מה היא מורידה. במסד היא רכה — «מה נמחק כאן» חייב תשובה בחודש הבא — אבל מתוך האפליקציה אין ממנה דרך חזרה.</div>
     </div>
   </section>
-
-  <!-- 10 · איזון ──────────────────────────────────────────────────────── -->
+  <!-- 10 · בינינו ──────────────────── -->
   <section class="scene" data-dur="9">
     <div class="phone">
-      <div class="head">תנועות</div>
+      <div class="head">כסף · חשבונות</div>
       <div class="body">
-        <div class="hero step" style="--i:0">
-          <div class="label">איזון בינינו</div>
-          <div style="font-size:15px;margin-top:6px">נעה חייבת לישראל</div>
-          <div class="fig">₪240</div>
-        </div>
-        <div class="mini pulse" style="--i:1">סגירה</div>
-        <div class="sect step" style="--i:2">אחרי ההחזר</div>
-        <div class="row step" style="--i:2"><span class="g label">איזון בינינו</span><span>מסודרים</span></div>
+        <div class="sect step" style="--i:0">בינינו · ₪</div>
+        <div class="row step" style="--i:0"><span class="g label">נעה מעבירה לישראל</span><span class="amt">240</span></div>
+        <div class="mini pulse" style="--i:1">רישום העברה</div>
+        <div class="sect step" style="--i:2">אחרי ההעברה</div>
+        <div class="row step" style="--i:2"><span class="g label">אנחנו מאוזנים</span></div>
       </div>
     </div>
     <div class="say">
-      <div class="idx">10 · איזון</div>
+      <div class="idx">10 · בינינו</div>
       <h2>מי חייב למי</h2>
-      <p>המערכת מחלקת כל הוצאה משותפת שווה בשווה ומשווה למי שבאמת שילם. התוצאה נאמרת <b>במשפט עם שני שמות</b>, אף פעם לא כמספר עם סימן שצריך לפענח.</p>
-      <p>«סגירה» רושמת החזר — והוא <b>לא נרשם כהוצאה חדשה</b>, רק מאפס את החוב.</p>
+      <p>כל הוצאה משותפת מתחלקת שווה בשווה ומושווית למי שבאמת שילם. התוצאה נאמרת <b>במשפט עם שני שמות</b> — «נעה מעבירה לישראל» — אף פעם לא כמספר עם סימן שצריך לפענח.</p>
+      <p>«רישום העברה» רושם את ההחזר, והוא <b>לא נרשם כהוצאה חדשה</b>: הוא רק מאפס את החוב.</p>
     </div>
   </section>
-
-  <!-- 11 · מזווה ──────────────────────────────────────────────────────── -->
+  <!-- 11 · ייבוא ──────────────────── -->
+  <section class="scene" data-dur="11">
+    <div class="phone">
+      <div class="head">ייבוא וייצוא לאקסל</div>
+      <div class="body">
+        <div class="mini step" style="--i:0">בחירת קובץ אקסל</div>
+        <div class="sect step" style="--i:1">מה ייכנס</div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">42 תנועות</span><span class="m">פירוט מקס · ספטמבר</span></span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">36 שויכו לבד</span><span class="m">לפי בתי עסק שזוהו</span></span></div>
+        <div class="row step" style="--i:2"><span class="g"><span class="t">3 בתשלומים</span><span class="m">2 מתוך 3 · 1 מתוך 12</span></span></div>
+        <div class="row pulse" style="--i:3"><span class="g"><span class="t">4 כבר קיימות</span><span class="m">ידולגו</span></span></div>
+      </div>
+    </div>
+    <div class="say">
+      <div class="idx">11 · ייבוא</div>
+      <h2>לא להקליד מה שכבר רשום</h2>
+      <p>פירוט העסקאות מחברת האשראי (xlsx), או קובץ התקציב שלכם, נכנסים ב«כסף» ← «ייבוא וייצוא לאקסל». <b>קודם רואים מה ייכנס ומה ידולג</b>, ורק אז נכתב משהו — וייבוא חוזר של אותו קובץ לא מכפיל.</p>
+      <p>עסקה בתשלומים נרשמת כתשלום, והיתרה מופיעה בתקציב תחת «כבר מחויב לחודשים הבאים».</p>
+      <div class="why">קאסה היא מקור האמת; האקסל הוא תצוגה שלה ושער כניסה אליה. אפשר גם לייצא אליו בחזרה.</div>
+    </div>
+  </section>
+  <!-- 12 · מזווה ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="11">
     <div class="phone">
       <div class="head">מזווה</div>
@@ -409,15 +424,14 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">11 · מזווה</div>
+      <div class="idx">12 · מזווה</div>
       <h2>הכמות המינימלית עושה הכול</h2>
       <p>לכל מוצר יש <b>כמות מינימלית</b>. ברגע שהמלאי יורד מתחתיה, המוצר נכנס לרשימת הקניות <b>לבד</b>. זה הכלל היחיד שהופך מלאי ממטלה לשירות.</p>
       <p>מינימום <span class="n">0</span> = «אל תטרידו אותי על זה».</p>
       <div class="why">כפתור המינוס הוא הפקד החשוב במערכת. עשר שניות אחרי שנגמר החלב זה הרגע היחיד שבו זה יירשם — ולכן זו לחיצה אחת, לא טופס.</div>
     </div>
   </section>
-
-  <!-- 12 · תפוגה ──────────────────────────────────────────────────────── -->
+  <!-- 13 · תפוגה ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">מזווה</div>
@@ -430,15 +444,14 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">12 · תפוגה</div>
+      <div class="idx">13 · תפוגה</div>
       <h2>שני קרטונים, שני תאריכים</h2>
       <p>מלאי נשמר <b>לפי אצוות</b>, לא כמספר אחד. שני קרטוני חלב שנקנו בהפרש שבוע פגים בהפרש שבוע — ומספר בודד לא יכול לומר את זה.</p>
       <p>כשמשתמשים, הכמות יורדת <b>מהאצווה שפגה ראשונה</b>. כל סדר אחר זורק אוכל באופן שיטתי.</p>
       <div class="why">תאריך התפוגה מחושב לבד מ«ימי המדף» של המוצר. ברגע שצריך לחשב «היום ועוד תשעה ימים» ביד — מפסיקים להזין תפוגות.</div>
     </div>
   </section>
-
-  <!-- 13 · קניות ──────────────────────────────────────────────────────── -->
+  <!-- 14 · קניות ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="11">
     <div class="phone">
       <div class="head">רשימת קניות</div>
@@ -454,15 +467,14 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">13 · קניות</div>
+      <div class="idx">14 · קניות</div>
       <h2>בסדר ההליכה בסופר</h2>
       <p>הרשימה ממוינת <b>לפי מעברי החנות</b>, לא לפי סדר ההקלדה — סדר ההקלדה הוא הסדר היחיד שמבטיח לעבור את הסופר פעמיים.</p>
-      <p>פריט עם <span class="mark-blue">קו כחול</span> נכנס לרשימה <b>מעצמו</b> כי נגמר במזווה. זו הערת שוליים של המערכת, כדי שהרשימה תסביר את עצמה ולא תיראה כאילו יש לה דעות משלה.</p>
+      <p>פריט עם <span class="mark-blue">קו כחול</span> נכנס לרשימה <b>מעצמו</b> כי נגמר במזווה. כמות, הערה או הסרה — בכפתור שבשולי השורה.</p>
       <div class="why">פריט שמסומן <b>לא נעלם</b>. הוא נשאר במקומו מחוק בקו — שורה שנעלמת מתחת לאגודל גוררת את השורה הבאה למעלה, וזה בדיוק איך מסמנים בטעות את הפריט הלא נכון.</div>
     </div>
   </section>
-
-  <!-- 14 · סגירה ──────────────────────────────────────────────────────── -->
+  <!-- 15 · סגירה ──────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">סגירת קנייה</div>
@@ -478,14 +490,13 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">14 · סגירה</div>
+      <div class="idx">15 · סגירה</div>
       <h2>לחיצה אחת, שלושה דברים</h2>
       <p>סימון «נקנה» <b>מכניס את המוצר למזווה</b> באותה לחיצה — בלי הזנה כפולה, שאף אחד לא עושה פעמיים.</p>
       <p>ו«סיום» סוגר את הסל ורושם בתקציב <b>שורה אחת</b>: ₪412 בסופר. לא ארבעים שורות של ₪3.90 — זה תקציב מדויק יותר שאף אחד לא קורא.</p>
     </div>
   </section>
-
-  <!-- 15 · בלי קליטה ──────────────────────────────────────────────────── -->
+  <!-- 16 · בלי קליטה ──────────────────────────────────────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">רשימת קניות</div>
@@ -498,59 +509,54 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">15 · בלי קליטה</div>
+      <div class="idx">16 · בלי קליטה</div>
       <h2>שופרסל עם שתי מקפצות</h2>
       <p>המקום שבו האפליקציה הזו באמת נבחנת הוא מרתף חניה עם קליטה גרועה. הסימון <b>לא מחכה לשרת</b>: הוא נראה מיד, ממתין בתור, ונשלח כשהרשת חוזרת. ההודעה שקטה בכוונה — רק פעולה שבאמת נתקעה מקבלת עיפרון אדום.</p>
       <p>הרשימה עצמה נשמרת על המכשיר ונפתחת גם בלי רשת. <b>הכסף לא</b> — מסך תקציב ששוכב במטמון של טלפון שעובר מיד ליד אינו שווה את זה.</p>
       <div class="why">לכל פעולה בתור מזהה משלה, כך שסימון שנשלח פעמיים לא ייספר פעמיים. בלי זה חיבור מקוטע היה מכפיל חלב.</div>
     </div>
   </section>
-
-  <!-- 16 · התראות ─────────────────────────────────────────────────────── -->
-  <section class="scene" data-dur="10">
+  <!-- 17 · כל בוקר ──────────────────── -->
+  <section class="scene" data-dur="9">
     <div class="phone">
-      <div class="head">קאסה</div>
-      <div class="sub">הבוקר בבית · 07:00</div>
+      <div class="head">רשימת קניות</div>
+      <div class="sub">07:00</div>
       <div class="body">
-        <div class="row step" style="--i:0"><span class="g"><span class="t">נגמר ונוסף לרשימה</span><span class="m">חלב, ביצים</span></span></div>
-        <div class="row step" style="--i:1"><span class="g"><span class="t">להשתמש לפני שיתקלקל</span><span class="m">קוטג׳ (היום), גבינה (3 ימים)</span></span></div>
-        <div class="row pulse" style="--i:2"><span class="g"><span class="t">ארנונה</span><span class="m">בעוד 3 ימים · כ־<span class="n">₪400</span></span></span></div>
-        <div class="warn step" style="--i:3">על מה שכבר פג תוקף — לא נשלחת התראה</div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">חלב</span><span class="mark-blue">נגמר במזווה</span></span><span class="n">2</span></div>
+        <div class="row step" style="--i:1"><span class="g"><span class="t">ביצים</span><span class="mark-blue">נגמר במזווה</span></span><span class="n">12</span></div>
+        <div class="warn step" style="--i:2">ארנונה · בעוד 3 ימים</div>
       </div>
     </div>
     <div class="say">
-      <div class="idx">16 · התראות</div>
-      <h2>פעם ביום, בטלגרם</h2>
-      <p>כל בוקר המערכת מרעננת את הרשימה ושולחת סיכום אחד: מה נגמר, מה עומד להתקלקל, ואיזה חשבון מגיע.</p>
-      <p>על <b>מה שכבר פג תוקף אין התראה</b> — בשלב הזה כבר אי אפשר לעשות כלום, והמסך מספיק. התראה שאי אפשר לפעול לפיה היא התראה שמלמדת להתעלם.</p>
-      <div class="why">בלי מפתחות טלגרם המערכת פשוט שקטה. זו לא שגיאה — זו דרך תקפה להפעיל אותה.</div>
+      <div class="idx">17 · כל בוקר</div>
+      <h2>הרשימה מתעדכנת לבד</h2>
+      <p>כל בוקר המערכת עוברת על המזווה: מה שירד מתחת למינימום <b>נכנס לרשימה</b>, ומה שעומד להתקלקל או חשבון שמגיע מופיע במסך הבית.</p>
+      <p>על <b>מה שכבר פג תוקף אין תזכורת</b> — בשלב הזה כבר אי אפשר לעשות כלום. תזכורת שאי אפשר לפעול לפיה מלמדת להתעלם.</p>
+      <div class="why">התראות לטלפון עוד לא פתוחות לבתים. בינתיים מסך הבית הוא המקום שבו זה נאמר.</div>
     </div>
   </section>
-
-  <!-- 17 · חשבונות ────────────────────────────────────────────────────── -->
+  <!-- 18 · חשבונות ──────────────────── -->
   <section class="scene" data-dur="10">
     <div class="phone">
       <div class="head">כסף · חשבונות</div>
       <div class="body">
         <div class="sect step" style="--i:0">יתרות · ₪</div>
         <div class="row step" style="--i:0"><span class="g"><span class="t">עובר ושב</span><span class="m">בנק</span></span><span class="amt">12,430</span></div>
-        <div class="row step" style="--i:0"><span class="g"><span class="t">מזומן</span></span><span class="amt">300</span></div>
+        <div class="row step" style="--i:0"><span class="g"><span class="t">מקס של ישראל</span><span class="m">אשראי</span></span><span class="amt over">−2,140</span></div>
         <div class="sect step" style="--i:1">חיובים קבועים · ₪</div>
-        <div class="row step" style="--i:1"><span class="g"><span class="t">ארנונה</span><span class="m">כל חודשיים · בעוד 5 ימים</span></span><span class="amt">684</span></div>
-        <div class="sect step" style="--i:2">בינינו · ₪</div>
-        <div class="row step" style="--i:2"><span class="g label">נעה מעבירה לישראל</span><span class="amt">420</span></div>
+        <div class="row pulse" style="--i:1"><span class="g"><span class="t">ארנונה</span><span class="m">כל חודשיים · בעוד 5 ימים</span></span><span class="amt">684</span></div>
+        <div class="sect step" style="--i:2">בארכיון · 1</div>
+        <div class="row step" style="--i:2"><span class="g"><span class="m">כרטיס ישן</span></span><span class="mini" style="margin:0;padding:4px 8px">להחזיר</span></div>
       </div>
     </div>
     <div class="say">
-      <div class="idx">17 · חשבונות</div>
-      <h2>איפה הכסף, מה יורד, ומי חייב למי</h2>
-      <p><b>יתרת חשבון מחושבת</b> — יתרת פתיחה ועוד כל תנועה מאז. אף פעם לא מספר שמור: יתרה שמורה ורשימת תנועות מתפצלות, ואז אי אפשר לסמוך על אף אחת מהן.</p>
-      <p><b>חיובים קבועים</b> — ארנונה, ועד בית, ביטוח. «שולם» רושם את ההוצאה ומעביר את החיוב לתאריך הבא. <b>בינינו</b> — ההוצאות המשותפות מתחלקות שווה בשווה, וכשמישהו מעביר לשני רושמים את זה כאן.</p>
-      <div class="why">אחרי כל עדכון של המערכת — «הרצת מיגרציה» מ«הגדרות» ← «מסד הנתונים». היא בטוחה לחזור עליה ולא מוחקת נתונים.</div>
+      <div class="idx">18 · חשבונות</div>
+      <h2>איפה הכסף, ומה יורד</h2>
+      <p><b>יתרת חשבון מחושבת</b> — יתרת פתיחה ועוד כל תנועה מאז, אף פעם לא מספר שמור. לחיצה על חשבון פותחת שם, סוג וארכיון; חשבון בארכיון שיש בו כסף נשאר בסך עד שיתאפס.</p>
+      <p><b>חיובים קבועים</b> — ארנונה, ועד בית, ביטוח. «שולם» רושם את ההוצאה ומעביר את החיוב לתאריך הבא.</p>
     </div>
   </section>
-
-  <!-- 18 · העיצוב ─────────────────────────────────────────────────────── -->
+  <!-- 19 · העיצוב ─────────────────────────────────────────────────────── -->
   <section class="scene" data-dur="12">
     <div class="phone">
       <div class="head">למה זה נראה ככה</div>
@@ -564,7 +570,7 @@ svg{display:block;margin:0 auto 2px}
       </div>
     </div>
     <div class="say">
-      <div class="idx">18 · העיצוב</div>
+      <div class="idx">19 · העיצוב</div>
       <h2>פנקס, לא אפליקציה</h2>
       <p>הפנקס המשורטט של המכולת הוא האב הקדמון הישיר של המערכת הזאת: מזווה, רשימה מתגלגלת ומעטפות תקציב הם כולם צאצאים שלו — והוא היה מותאם בדיוק למשימה שהיא מבצעת, לסרוק טור מספרים ולמצוא את אי־ההתאמה.</p>
       <p><b>ואין ירוק.</b> שחור = ביתרה, אדום = בחריגה — זו החשבונאות עצמה. מצב תקין לא מסומן בכלום, ובדיוק לכן העיפרון האדום אומר משהו כשהוא מופיע.</p>

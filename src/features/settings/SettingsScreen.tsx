@@ -8,6 +8,8 @@ import { shouldUpdate } from '@shared/version.js';
 import type { Role, User } from '@shared/types.js';
 import { HouseholdSwitcher } from '../household/HouseholdGate.js';
 import { Link } from '../../lib/router.js';
+import { PayeeRulesSheet } from './PayeeRulesSheet.js';
+import { ProfileSheet } from './ProfileSheet.js';
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'בעל הבית', member: 'שותף', viewer: 'צופה', pending: 'ממתין לאישור',
@@ -26,13 +28,33 @@ const ROLE_LABELS: Record<string, string> = {
 export function SettingsScreen() {
   const { user, households, signOut, isOperator } = useSession();
   const isOwner = user?.role === 'owner';
-  const [sheet, setSheet] = useState<'export' | 'database' | null>(null);
+  const [sheet, setSheet] = useState<'export' | 'database' | 'payees' | 'profile' | null>(null);
+  const canWrite = user?.role === 'owner' || user?.role === 'member';
 
   return (
     <>
       <TopBar title="הגדרות" subtitle={user?.household_name ?? user?.email} />
 
       <div className="page">
+        {/* What we are called comes first: it is the one thing here that is
+            printed on other screens every day. */}
+        {canWrite && (
+          <section className="section">
+            <h2>אנחנו</h2>
+            <div className="rows">
+              <button className="row" style={{ minHeight: 52 }} onClick={() => setSheet('profile')}>
+                <span className="grow" style={{ textAlign: 'start' }}>איך לקרוא לך</span>
+                <span className="meta">{user.display_name ?? user.name ?? ''}</span>
+              </button>
+              {isOwner && (
+                <button className="row" style={{ minHeight: 52 }} onClick={() => setSheet('profile')}>
+                  <span className="grow" style={{ textAlign: 'start' }}>שם הבית</span>
+                  <span className="meta">{user.household_name}</span>
+                </button>
+              )}
+            </div>
+          </section>
+        )}
         {isOwner && <MembersSection currentEmail={user.email} />}
         {isOwner && <InviteSection />}
         {user && <HouseholdSwitcher households={households} current={user.household_id ?? 0} />}
@@ -48,6 +70,12 @@ export function SettingsScreen() {
               <span className="grow">ייבוא וייצוא לאקסל</span>
               <span className="meta">פירוט אשראי · קובץ התקציב</span>
             </Link>
+            {canWrite && (
+              <button className="row" style={{ minHeight: 52 }} onClick={() => setSheet('payees')}>
+                <span className="grow" style={{ textAlign: 'start' }}>בתי עסק שזוהו</span>
+                <span className="meta">לאיזה סעיף כל אחד הולך</span>
+              </button>
+            )}
             <button className="row" style={{ minHeight: 52 }} onClick={() => setSheet('export')}>
               <span className="grow">הורדת הנתונים</span>
               <span className="meta">CSV · גיבוי מלא</span>
@@ -70,6 +98,8 @@ export function SettingsScreen() {
         </section>
       </div>
 
+      {sheet === 'payees' && <PayeeRulesSheet onClose={() => setSheet(null)} />}
+      {sheet === 'profile' && <ProfileSheet onClose={() => setSheet(null)} />}
       {sheet === 'export' && (
         <Sheet title="הורדת הנתונים" onClose={() => setSheet(null)}>
           <ExportSection isOwner={isOwner} />

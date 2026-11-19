@@ -4,7 +4,9 @@ import { badRequest, conflict, notFound } from '../_lib/http.js';
 import { date, int, num, oneOf, optionalDate, optionalInt, optionalNum, optionalStr, str } from '../_lib/validate.js';
 import { PRODUCT_SELECT, getProduct, keyFor, syncShoppingListFromStock } from '../_lib/pantry-service.js';
 import { applyConsumption } from '../../shared/pantry.js';
-import type { Product, StockEntry } from '../../shared/types.js';
+import { normalizeHabits, planWeek, weekStart } from '../../shared/meals.js';
+import { cook, loadRecipes, saveRecipe, setDay, stockFacts, syncMealsToList, weekEntries } from '../_lib/meals-service.js';
+import type { MealHabits, Product, StockEntry } from '../../shared/types.js';
 import { applyReceipt, listReceipts, previewReceipt } from './_receipts.js';
 
 const LOCATIONS = ['מזווה', 'מקרר', 'מקפיא', 'אמבטיה', 'ניקיון', 'אחר'] as const;
@@ -52,7 +54,7 @@ async function createProduct(ctx: Ctx): Promise<Product | null> {
   const row = await one<{ id: number }>(
     `INSERT INTO products (name, name_key, unit, category, min_qty, default_location, shelf_life_days, barcode, note)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-     ON CONFLICT (name_key) DO NOTHING RETURNING id`,
+     ON CONFLICT (household_id, name_key) DO NOTHING RETURNING id`,
     [p.name, p.name_key, p.unit, p.category, p.min_qty, p.default_location, p.shelf_life_days, p.barcode, p.note],
   );
   if (!row) throw conflict(`כבר יש מוצר בשם «${p.name}»`);
@@ -222,6 +224,36 @@ async function correctStock(ctx: Ctx) {
   return { ok: true, product: await getProduct(productId), changed: true };
 }
 
+// ── Recipes and meals ────────────────────────────────────────────────────
+//
+// In the pantry's function rather than one of their own: Vercel deploys at
+// most twelve, and a dinner is made of what is on these shelves anyway.
+
+const today = () => new Date().toISOString().slice(0, 10);
+
+async function habits(): Promise<MealHabits> {
+  const row = await one<{ habits: unknown }>(`SELECT habits FROM meal_settings LIMIT 1`);
+  return normalizeHabits(row?.habits ?? null);
+}
+
+/** Every week is named by its Sunday, whatever day the screen happened to send. */
+const weekOf = (value: unknown): string => weekStart(date(value ?? today(), 'שבוע'));
+
+function dayList(value: unknown, field: string): { day: string; recipe_id: number }[] {
+  if (value == null) return [];
+  if (!Array.isArray(value)) throw badRequest(`${field} חייב להיות רשימה`);
+  return value.slice(0, 14).map((raw) => {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    return { day: date(r['day'], 'יום'), recipe_id: int(r['recipe_id'], 'מתכון') };
+  });
+}
+
+/** After the plan changes: the pantry's own rule first, then the meals' needs on top of it. */
+async function resync(actor: string) {
+  await syncShoppingListFromStock(actor);
+  return syncMealsToList(actor);
+}
+
 // ── Routes ───────────────────────────────────────────────────────────────
 
 export default router([
@@ -292,6 +324,105 @@ export default router([
   },
 
   { method: 'POST', path: 'sync-list', handle: async (ctx) => syncShoppingListFromStock(ctx.user.email) },
+
+  {
+    method: 'GET', path: 'recipes', role: 'viewer',
+    handle: (ctx) => loadRecipes({ includeArchived: ctx.query['include_archived'] === '1' }),
+  },
+  { method: 'POST', path: 'recipes', handle: (ctx) => saveRecipe(null, ctx.body, ctx.user.email) },
+  {
+    method: 'PATCH', path: 'recipes/:id',
+    handle: async (ctx) => {
+      const recipe = await saveRecipe(Number(ctx.params['id']), ctx.body, ctx.user.email);
+      // A changed ingredient list changes what the coming week needs.
+      await resync(ctx.user.email);
+      return recipe;
+    },
+  },
+  {
+    method: 'DELETE', path: 'recipes/:id',
+    handle: async (ctx) => {
+      // Archived, never deleted: its cooked days are the household's history,
+      // and the planner's «last time we ate this» is read from them.
+      const id = Number(ctx.params['id']);
+      const row = await one(`UPDATE recipes SET archived_at = NOW() WHERE id = $1 AND archived_at IS NULL RETURNING id`, [id]);
+      if (!row) throw notFound('המתכון לא נמצא');
+      await query(`DELETE FROM meal_plan WHERE recipe_id = $1 AND status = 'planned'`, [id]);
+      await resync(ctx.user.email);
+      return { ok: true };
+    },
+  },
+  {
+    method: 'POST', path: 'recipes/:id/cooked',
+    handle: async (ctx) => {
+      const result = await cook(Number(ctx.params['id']), date(ctx.body['day'] ?? today(), 'יום'), ctx.user.email);
+      const list = await resync(ctx.user.email);
+      return { ...result, list };
+    },
+  },
+
+  {
+    method: 'GET', path: 'meals', role: 'viewer',
+    handle: async (ctx) => {
+      const week = weekOf(ctx.query['week']);
+      return { week, habits: await habits(), entries: await weekEntries(week) };
+    },
+  },
+  {
+    method: 'PUT', path: 'meals/habits',
+    handle: async (ctx) => {
+      const next = normalizeHabits(ctx.body['habits']);
+      const updated = await one(`UPDATE meal_settings SET habits = $1, updated_at = NOW() RETURNING id`, [JSON.stringify(next)]);
+      if (!updated) await query(`INSERT INTO meal_settings (habits) VALUES ($1)`, [JSON.stringify(next)]);
+      return next;
+    },
+  },
+  {
+    // A proposal, not a write. Nothing is saved until the week is approved,
+    // so pressing «שוב» five times costs nothing and touches no list.
+    method: 'POST', path: 'meals/suggest',
+    handle: async (ctx) => {
+      const week = weekOf(ctx.body['week']);
+      return planWeek({
+        weekStart: week,
+        today: today(),
+        habits: await habits(),
+        recipes: await loadRecipes(),
+        stock: await stockFacts(),
+        locked: dayList(ctx.body['locked'], 'ימים קבועים'),
+        avoid: dayList(ctx.body['avoid'], 'ימים להחלפה'),
+        seed: optionalInt(ctx.body['seed'], 'seed') ?? Date.now() % 100_000,
+      });
+    },
+  },
+  {
+    // Approving the week: what was proposed becomes the plan, the planned
+    // days not in it are cleared, and the list follows.
+    method: 'PUT', path: 'meals/week',
+    handle: async (ctx) => {
+      const week = weekOf(ctx.body['week']);
+      const entries = dayList(ctx.body['entries'], 'ארוחות')
+        .filter((e) => weekStart(e.day) === week);
+      await query(
+        `DELETE FROM meal_plan WHERE status = 'planned' AND day >= $1::date AND day < $1::date + 7
+            AND NOT (day = ANY($2::date[]))`,
+        [week, entries.map((e) => e.day)],
+      );
+      for (const e of entries) await setDay(e.day, e.recipe_id, ctx.user.email);
+      const list = await resync(ctx.user.email);
+      return { week, entries: await weekEntries(week), list };
+    },
+  },
+  {
+    method: 'PUT', path: 'meals/day/:day',
+    handle: async (ctx) => {
+      const day = date(ctx.params['day'], 'יום');
+      await setDay(day, optionalInt(ctx.body['recipe_id'], 'מתכון'), ctx.user.email);
+      const list = await resync(ctx.user.email);
+      return { entries: await weekEntries(weekStart(day)), list };
+    },
+  },
+  { method: 'POST', path: 'meals/sync', handle: (ctx) => resync(ctx.user.email) },
 
   // Supermarket receipts. Here and not in a module of their own: they are the
   // pantry's way in, and a new file under api/ would be a seventh function.

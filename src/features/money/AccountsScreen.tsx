@@ -32,11 +32,19 @@ export function AccountsScreen() {
   const bills = useAsync(() => api.get<RecurringBill[]>('/money/bills'));
   const balance = useAsync(() => api.get<BalanceBetweenUs>('/money/balance'));
   const [addingAccount, setAddingAccount] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const toast = useToast();
   const [bill, setBill] = useState<RecurringBill | 'new' | null>(null);
   const [settling, setSettling] = useState(false);
 
-  const open = (accounts.data ?? []).filter((a) => !a.archived_at);
-  const net = open.reduce((sum, a) => sum + a.balance, 0);
+  const all = accounts.data ?? [];
+  const open = all.filter((a) => !a.archived_at);
+  // An archived account that still holds money stays in the list and in the
+  // total: archiving says «we stopped using it», not «that money is gone».
+  // Only an empty one moves to the archive line at the bottom.
+  const shown = all.filter((a) => !a.archived_at || a.balance !== 0);
+  const shelved = all.filter((a) => a.archived_at && a.balance === 0);
+  const net = shown.reduce((sum, a) => sum + a.balance, 0);
 
   return (
     <>
@@ -49,20 +57,20 @@ export function AccountsScreen() {
           <h2>יתרות <span className="count">· ₪</span></h2>
           {accounts.error && <ErrorNote message={accounts.error} onRetry={accounts.reload} />}
           <div className="rows">
-            {open.map((a) => (
-              <div className="row" key={a.id}>
-                <span className="grow">
+            {shown.map((a) => (
+              <button className="row" key={a.id} onClick={() => setEditingAccount(a)}>
+                <span className="grow" style={{ textAlign: 'start' }}>
                   <span className="title" style={{ display: 'block' }}>{a.name}</span>
-                  <span className="meta">{KIND_LABELS[a.kind] ?? a.kind}</span>
+                  <span className="meta">{KIND_LABELS[a.kind] ?? a.kind}{a.archived_at && ' · בארכיון'}</span>
                 </span>
                 <span className={`n amount ${a.balance < 0 ? 'over' : ''}`}>
                   {formatILS(a.balance, { symbol: false })}
                 </span>
-              </div>
+              </button>
             ))}
             {accounts.loading && <Loading />}
           </div>
-          {open.length > 0 && (
+          {shown.length > 0 && (
             <>
               <hr className="rule-2" />
               <div className="row" style={{ borderBottom: 0, minHeight: 44 }}>
@@ -76,6 +84,25 @@ export function AccountsScreen() {
           <button className="btn btn-block btn-sm" style={{ marginTop: 'var(--s3)' }} onClick={() => setAddingAccount(true)}>
             <Icon name="plus" size={16} /> הוספת חשבון
           </button>
+          {shelved.length > 0 && (
+            <div className="rows" style={{ marginTop: 'var(--s5)' }}>
+              <div className="label" style={{ paddingBottom: 'var(--s2)', borderBottom: '1px solid var(--rule)' }}>
+                בארכיון <span className="n" style={{ color: 'var(--ink-3)', fontWeight: 400 }}>· {shelved.length}</span>
+              </div>
+              {shelved.map((a) => (
+                <div className="row" key={a.id} style={{ minHeight: 52, color: 'var(--ink-2)' }}>
+                  <span className="grow">{a.name}</span>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => { void api.patch(`/money/accounts/${a.id}`, { archived: false }).then(accounts.reload); }}
+                  >
+                    להחזיר
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <Bills
@@ -90,6 +117,23 @@ export function AccountsScreen() {
           <Between balance={balance.data} onSettle={() => setSettling(true)} />
         )}
       </div>
+
+      {editingAccount && (
+        <Sheet title={editingAccount.name} onClose={() => setEditingAccount(null)}>
+          <AccountForm
+            account={editingAccount}
+            onSaved={() => { setEditingAccount(null); accounts.reload(); }}
+            onArchived={() => {
+              const archived = editingAccount;
+              setEditingAccount(null);
+              accounts.reload();
+              toast.show(`${archived.name} הועבר לארכיון`, {
+                undo: () => { void api.patch(`/money/accounts/${archived.id}`, { archived: false }).then(accounts.reload); },
+              });
+            }}
+          />
+        </Sheet>
+      )}
 
       {addingAccount && (
         <Sheet title="חשבון חדש" onClose={() => setAddingAccount(false)}>
@@ -403,38 +447,82 @@ function BillSheet({ bill, accounts, onClose, onSaved }: {
   );
 }
 
-export function AccountForm({ onSaved, initialName = '', initialKind = 'bank' }: {
-  onSaved: () => void; initialName?: string; initialKind?: string;
+export function AccountForm({ onSaved, onArchived, account, initialName = '', initialKind = 'bank' }: {
+  onSaved: () => void;
+  onArchived?: () => void;
+  /** Editing this one rather than adding. */
+  account?: Account;
+  initialName?: string;
+  initialKind?: string;
 }) {
-  const [name, setName] = useState(initialName);
-  const [kind, setKind] = useState(initialKind);
-  const [opening, setOpening] = useState('0');
+  const [name, setName] = useState(account?.name ?? initialName);
+  const [kind, setKind] = useState<string>(account?.kind ?? initialKind);
+  const [opening, setOpening] = useState(String(account?.opening_balance ?? 0));
+  const [archiveError, setArchiveError] = useState<string | null>(null);
 
   return (
-    <AsyncForm
-      submitLabel="הוספה"
-      disabled={!name.trim()}
-      onSubmit={async () => {
-        await api.post('/money/accounts', { name, kind, opening_balance: Number(opening) || 0 });
-        onSaved();
-      }}
-    >
-      <Field label="שם">
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="עובר ושב" />
-      </Field>
-      <div className="row-2">
-        <Field label="סוג">
-          <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
-            {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+    <>
+      <AsyncForm
+        submitLabel={account ? 'שמירה' : 'הוספה'}
+        disabled={!name.trim()}
+        onSubmit={async () => {
+          const body = { name: name.trim(), kind, opening_balance: Number(opening) || 0 };
+          if (account) await api.patch(`/money/accounts/${account.id}`, body);
+          else await api.post('/money/accounts', body);
+          onSaved();
+        }}
+      >
+        <Field label="שם">
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} autoFocus={!account} placeholder="עובר ושב" />
         </Field>
-        <Field label="יתרת פתיחה · ₪">
-          <input className="input" type="number" inputMode="decimal" step="0.01" value={opening} onChange={(e) => setOpening(e.target.value)} />
-        </Field>
-      </div>
-      <p className="meta" style={{ marginBottom: 'var(--s4)' }}>
-        יתרת פתיחה היא איפה החשבון עמד ביום שהתחלנו לעקוב. היתרה המוצגת היא היא ועוד כל תנועה מאז — לעולם לא מספר שמור.
-      </p>
-    </AsyncForm>
+        <div className="row-2">
+          <Field label="סוג">
+            <select className="select" value={kind} onChange={(e) => setKind(e.target.value)}>
+              {Object.entries(KIND_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </Field>
+          <Field label="יתרת פתיחה · ₪">
+            <input className="input" type="number" inputMode="decimal" step="0.01" value={opening} onChange={(e) => setOpening(e.target.value)} />
+          </Field>
+        </div>
+        <p className="meta" style={{ marginBottom: 'var(--s4)' }}>
+          יתרת פתיחה היא איפה החשבון עמד ביום שהתחלנו לעקוב. היתרה המוצגת היא היא ועוד כל תנועה מאז — לעולם לא מספר שמור.
+        </p>
+      </AsyncForm>
+
+      {/* docs/DESIGN.md §5ד: last, alone, and saying what happens to the money. */}
+      {account && !account.archived_at && onArchived && (
+        <div style={{ marginTop: 'var(--s5)', borderTop: '1px solid var(--rule)', paddingTop: 'var(--s4)' }}>
+          {archiveError && <ErrorNote message={archiveError} />}
+          <button
+            type="button"
+            className="btn btn-red btn-block"
+            onClick={() => {
+              setArchiveError(null);
+              api.patch(`/money/accounts/${account.id}`, { archived: true })
+                .then(onArchived)
+                .catch((err: Error) => setArchiveError(err.message));
+            }}
+          >
+            להעביר לארכיון
+          </button>
+          <p className="meta" style={{ marginTop: 'var(--s2)' }}>
+            {account.balance !== 0
+              ? `החשבון לא יופיע בבחירת חשבון לתנועה חדשה. היתרה, ${formatILS(account.balance)}, תישאר בסך עד שתתאפס.`
+              : 'החשבון לא יופיע בבחירת חשבון לתנועה חדשה. התנועות שכבר נרשמו נשארות.'}
+          </p>
+        </div>
+      )}
+      {account?.archived_at && (
+        <button
+          type="button"
+          className="btn btn-block"
+          style={{ marginTop: 'var(--s4)' }}
+          onClick={() => { void api.patch(`/money/accounts/${account.id}`, { archived: false }).then(onSaved); }}
+        >
+          להחזיר מהארכיון
+        </button>
+      )}
+    </>
   );
 }

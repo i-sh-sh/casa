@@ -185,7 +185,9 @@ export default router([
     handle: async (ctx) => {
       const row = await one<ShoppingItem>(
         `UPDATE shopping_items
-            SET qty = COALESCE($2, qty), note = COALESCE($3, note),
+            SET qty = COALESCE($2, qty),
+                -- An empty note clears it; an absent one leaves it.
+                note = CASE WHEN $6::boolean THEN NULLIF($3, '') ELSE COALESCE($3, note) END,
                 category = COALESCE($4, category), status = COALESCE($5, status)
           WHERE id = $1 RETURNING *`,
         [
@@ -194,6 +196,7 @@ export default router([
           optionalStr(ctx.body['note'], 'הערה', 300),
           optionalStr(ctx.body['category'], 'מדף', 40),
           ctx.body['status'] ? oneOf(ctx.body['status'], 'סטטוס', STATUSES) : null,
+          ctx.body['note'] === '',
         ],
       );
       if (!row) throw notFound('הפריט לא נמצא');

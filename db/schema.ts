@@ -329,6 +329,77 @@ CREATE UNIQUE INDEX IF NOT EXISTS shopping_items_one_open_per_name
   ON shopping_items (name_key) WHERE status = 'open' AND product_id IS NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────
+-- Recipes and the week's meals
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- The household's own cookbook, not a recipe site: what we actually cook,
+-- how much we like it, and when we last made it. Those three facts are what
+-- the weekly planner (shared/meals.ts) chooses from, and the last one is
+-- learned rather than typed — every «בישלנו» is a row in meal_plan.
+
+CREATE TABLE IF NOT EXISTS recipes (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  name_key    TEXT NOT NULL,
+  -- What the meal is built around. One value rather than free tags, because
+  -- the eating habits («בשר עד 3 פעמים», «ערב צמחוני») are rules about exactly
+  -- this, and a rule over free text is a rule nobody can trust.
+  kind        TEXT NOT NULL DEFAULT 'צמחוני'
+              CHECK (kind IN ('בשר', 'עוף', 'דגים', 'חלבי', 'צמחוני')),
+  effort      TEXT NOT NULL DEFAULT 'רגיל' CHECK (effort IN ('מהיר', 'רגיל', 'ארוך')),
+  liking      SMALLINT NOT NULL DEFAULT 2 CHECK (liking BETWEEN 1 AND 3),
+  servings    SMALLINT,
+  source      TEXT,
+  note        TEXT,
+  archived_at TIMESTAMPTZ,
+  created_by  TEXT REFERENCES users(email) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- An ingredient is linked to a product when we track one by that name, the
+-- same way a shopping line is — that link is what lets the planner see what
+-- is already on the shelf and lets «בישלנו» take it off again. It may stay
+-- unlinked until the first time the ingredient has to be bought; the sync
+-- creates the product then (api/_lib/meals-service.ts).
+CREATE TABLE IF NOT EXISTS recipe_ingredients (
+  id           SERIAL PRIMARY KEY,
+  recipe_id    INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+  product_id   INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  name         TEXT NOT NULL,
+  name_key     TEXT NOT NULL,
+  qty          NUMERIC(10,2),
+  unit         TEXT,
+  -- Salt, water, oil: never worth a line on the list. Without this every
+  -- planned week would ask us to buy salt.
+  always_have  BOOLEAN NOT NULL DEFAULT FALSE,
+  position     SMALLINT NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS recipe_ingredients_recipe ON recipe_ingredients (recipe_id);
+
+-- One dinner per day. \`planned\` rows are the week we agreed on; \`cooked\` is
+-- the history the planner learns from. A row is never deleted once cooked —
+-- it is the only record of what this home eats.
+CREATE TABLE IF NOT EXISTS meal_plan (
+  id          SERIAL PRIMARY KEY,
+  day         DATE NOT NULL,
+  recipe_id   INTEGER NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
+  status      TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned', 'cooked')),
+  cooked_at   TIMESTAMPTZ,
+  created_by  TEXT REFERENCES users(email) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- The household's eating habits, as one validated document. JSONB rather
+-- than a column per rule: the rules will grow, and each new one would
+-- otherwise be another ALTER TABLE for a value only shared/meals.ts reads.
+CREATE TABLE IF NOT EXISTS meal_settings (
+  id          SERIAL PRIMARY KEY,
+  habits      JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ─────────────────────────────────────────────────────────────────────────
 -- Supermarket receipts
 -- ─────────────────────────────────────────────────────────────────────────
 --
@@ -513,6 +584,7 @@ DECLARE
     'transactions', 'recurring_bills', 'settlements',
     'products', 'stock_entries', 'stock_log', 'shopping_items',
     'sent_notifications', 'payee_rules',
+    'recipes', 'recipe_ingredients', 'meal_plan', 'meal_settings',
     'receipts', 'receipt_lines', 'receipt_item_rules'
   ];
   scope_expr TEXT := 'nullif(current_setting(''casa.household_id'', true), '''')::int';
@@ -652,6 +724,21 @@ BEGIN
           OR (installment_no >= 1 AND installments_total >= 2 AND installment_no <= installments_total));
   END IF;
 END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- Recipes: uniqueness, which needs the household column the loop above adds
+-- ─────────────────────────────────────────────────────────────────────────
+
+CREATE UNIQUE INDEX IF NOT EXISTS recipes_unique_name
+  ON recipes (household_id, name_key) WHERE archived_at IS NULL;
+-- One dinner a day. Swapping a day replaces its row instead of stacking a
+-- second one the planner would then have to choose between.
+CREATE UNIQUE INDEX IF NOT EXISTS meal_plan_one_per_day
+  ON meal_plan (household_id, day);
+CREATE INDEX IF NOT EXISTS meal_plan_recipe
+  ON meal_plan (recipe_id, day DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS meal_settings_one_per_home
+  ON meal_settings (household_id);
 
 -- Receipts, scoped: these indexes need household_id, which the tenant loop
 -- above adds, so they live after it.
