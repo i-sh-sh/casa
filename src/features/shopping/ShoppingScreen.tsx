@@ -37,6 +37,7 @@ export function ShoppingScreen() {
   });
   const [adding, setAdding] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [editing, setEditing] = useState<ShoppingItem | null>(null);
   const toast = useToast();
   const outbox = useOutbox();
   const folds = useFolds('shopping');
@@ -84,6 +85,18 @@ export function ShoppingScreen() {
     outbox.send({
       id: actionId(), verb: 'POST',
       path: `/shopping/items/${item.id}/unbuy`,
+      subject: `item:${item.id}`,
+    });
+  }
+
+  // Through the queue like a tick: a quantity changed in aisle four is true
+  // whether or not the request gets out of aisle four.
+  function edit(item: ShoppingItem, changes: { qty: number; note: string }) {
+    list.set((prev) => (prev ?? []).map((i) => (i.id === item.id ? { ...i, ...changes, note: changes.note || null } : i)));
+    outbox.send({
+      id: actionId(), verb: 'PATCH',
+      path: `/shopping/items/${item.id}`,
+      body: changes,
       subject: `item:${item.id}`,
     });
   }
@@ -149,7 +162,7 @@ export function ShoppingScreen() {
                     key={item.id}
                     item={item}
                     onToggle={() => void (item.status === 'open' ? tick(item) : untick(item))}
-                    onRemove={() => void remove(item)}
+                    onEdit={() => setEditing(item)}
                   />
                 ))}
               </div>
@@ -172,6 +185,19 @@ export function ShoppingScreen() {
           onAdded={(aisle) => { setAdding(false); folds.reveal(aisle); list.reload(); }}
         />
       )}
+      {editing && (
+        <ItemSheet
+          item={editing}
+          onClose={() => setEditing(null)}
+          onSave={(changes) => { edit(editing, changes); setEditing(null); }}
+          onRemove={() => {
+            const removed = editing;
+            remove(removed);
+            setEditing(null);
+            toast.show(`${removed.name} הוסר מהרשימה`);
+          }}
+        />
+      )}
       {checkingOut && (
         <CheckoutSheet
           count={bought.length}
@@ -191,7 +217,7 @@ export function ShoppingScreen() {
  * right-hand margin where every mark in this app sits, and the quantity sits
  * at the left end where every number does.
  */
-function Row({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () => void; onRemove: () => void }) {
+function Row({ item, onToggle, onEdit }: { item: ShoppingItem; onToggle: () => void; onEdit: () => void }) {
   const done = item.status === 'bought';
   return (
     <div className={`row ${item.source === 'auto_min_stock' && !done ? 'by-system' : ''}`}>
@@ -219,12 +245,43 @@ function Row({ item, onToggle, onRemove }: { item: ShoppingItem; onToggle: () =>
         </span>
         <span className="meta" style={{ opacity: done ? .4 : 1 }}>{item.unit}</span>
       </button>
+      {/* Quantity, note and removal behind one control. Removal used to be
+          an X here, one tap from the tick target on a row read while walking;
+          now it sits at the foot of the sheet, last and alone (DESIGN.md §5ד). */}
       {!done && (
-        <button className="btn btn-quiet" onClick={onRemove} aria-label={`הסרת ${item.name} מהרשימה`}>
-          <Icon name="close" size={16} />
+        <button className="btn btn-quiet" onClick={onEdit} aria-label={`עריכת ${item.name}`}>
+          <Icon name="more" size={18} />
         </button>
       )}
     </div>
+  );
+}
+
+function ItemSheet({ item, onClose, onSave, onRemove }: {
+  item: ShoppingItem;
+  onClose: () => void;
+  onSave: (changes: { qty: number; note: string }) => void;
+  onRemove: () => void;
+}) {
+  const [qty, setQty] = useState(String(item.qty));
+  const [note, setNote] = useState(item.note ?? '');
+  return (
+    <Sheet title={item.name} onClose={onClose}>
+      <form noValidate onSubmit={(e) => { e.preventDefault(); onSave({ qty: Number(qty) > 0 ? Number(qty) : item.qty, note: note.trim() }); }}>
+        <div className="row-2">
+          <Field label={`כמות · ${item.unit}`}>
+            <input className="input" type="number" inputMode="decimal" min="0.1" step="1" value={qty} onChange={(e) => setQty(e.target.value)} autoFocus />
+          </Field>
+          <Field label="הערה">
+            <input className="input" value={note} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+        </div>
+        <button className="btn btn-primary btn-block" type="submit">שמירה</button>
+      </form>
+      <div style={{ marginTop: 'var(--s5)', borderTop: '1px solid var(--rule)', paddingTop: 'var(--s4)' }}>
+        <button type="button" className="btn btn-red btn-block" onClick={onRemove}>להסיר מהרשימה</button>
+      </div>
+    </Sheet>
   );
 }
 
