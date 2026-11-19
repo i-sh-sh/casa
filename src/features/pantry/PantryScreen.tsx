@@ -4,6 +4,7 @@ import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, use
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { AISLES, expiryState } from '@shared/pantry.js';
+import { ReceiptSheet } from './ReceiptSheet.js';
 import type { Product } from '@shared/types.js';
 
 const LOCATIONS = ['מזווה', 'מקרר', 'מקפיא', 'אמבטיה', 'ניקיון', 'אחר'] as const;
@@ -28,6 +29,7 @@ export function PantryScreen() {
   const [editing, setEditing] = useState<Product | null>(null);
   const [creating, setCreating] = useState(false);
   const [stocking, setStocking] = useState<Product | null>(null);
+  const [receipt, setReceipt] = useState(false);
   const toast = useToast();
   const folds = useFolds('pantry');
 
@@ -80,7 +82,11 @@ export function PantryScreen() {
 
   return (
     <>
-      <TopBar title="מזווה" subtitle={low.length ? `${low.length} נגמרים` : `${all.length} מוצרים`} />
+      <TopBar
+        title="מזווה"
+        subtitle={low.length ? `${low.length} נגמרים` : `${all.length} מוצרים`}
+        action={<button className="btn btn-sm" onClick={() => setReceipt(true)}>קבלה מהסופר</button>}
+      />
 
       <div className="page">
         <div className="tabs">
@@ -165,6 +171,12 @@ export function PantryScreen() {
             folds.reveal(aisle);
             products.reload();
           }}
+        />
+      )}
+      {receipt && (
+        <ReceiptSheet
+          onClose={() => setReceipt(false)}
+          onDone={(message) => { setReceipt(false); products.reload(); toast.show(message); }}
         />
       )}
       {stocking && (

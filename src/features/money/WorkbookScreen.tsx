@@ -215,7 +215,8 @@ function Preview({ summary, sources }: { summary: ImportSummary; sources: string
   }
   lines.push({
     label: 'עסקאות',
-    value: `${summary.transactions} חדשות` + (summary.duplicates ? `, ${summary.duplicates} כבר רשומות ולא ייכנסו שוב` : ''),
+    value: `${summary.transactions} חדשות` + (summary.duplicates ? `, ${summary.duplicates} כבר רשומות ולא ייכנסו שוב` : '')
+      + (summary.by_receipt ? ` (${summary.by_receipt} מקבלות סופר)` : ''),
     detail: summary.transactions && summary.account_name
       ? <>בסך <span className="n">{formatILS(-summary.transactions_total)}</span>, לחשבון {summary.account_name}</> : undefined,
   });

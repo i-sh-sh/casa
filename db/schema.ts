@@ -329,6 +329,61 @@ CREATE UNIQUE INDEX IF NOT EXISTS shopping_items_one_open_per_name
   ON shopping_items (name_key) WHERE status = 'open' AND product_id IS NULL;
 
 -- ─────────────────────────────────────────────────────────────────────────
+-- Supermarket receipts
+-- ─────────────────────────────────────────────────────────────────────────
+--
+-- A digital receipt is the one record of a shopping trip that nobody has to
+-- type: every item, how many, what it cost. Read once, it fills the pantry,
+-- clears the list and writes the expense — three entries that were otherwise
+-- three chores, and so were mostly never done.
+--
+-- The receipt itself is kept, not just its effects, so that importing the
+-- same receipt twice can be recognised (\`fingerprint\`), and so that the card
+-- statement arriving a month later can find the expense this receipt already
+-- wrote instead of recording the same ₪412 a second time (\`transaction_id\`).
+
+CREATE TABLE IF NOT EXISTS receipts (
+  id              SERIAL PRIMARY KEY,
+  store           TEXT NOT NULL DEFAULT '',
+  purchased_on    DATE NOT NULL,
+  total           NUMERIC(12,2),
+  -- Store, date, total and items, normalised. Two pastes of one receipt agree
+  -- on it; two trips on the same day for the same sum almost never do.
+  fingerprint     TEXT NOT NULL,
+  transaction_id  INTEGER REFERENCES transactions(id) ON DELETE SET NULL,
+  line_count      INTEGER NOT NULL DEFAULT 0,
+  created_by      TEXT REFERENCES users(email) ON DELETE SET NULL,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at      TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS receipt_lines (
+  id          SERIAL PRIMARY KEY,
+  receipt_id  INTEGER NOT NULL REFERENCES receipts(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  barcode     TEXT,
+  -- Three places, because a weighed item is 0.512 ק״ג.
+  qty         NUMERIC(10,3) NOT NULL DEFAULT 1,
+  total       NUMERIC(12,2),
+  product_id  INTEGER REFERENCES products(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS receipt_lines_receipt ON receipt_lines (receipt_id);
+
+-- What a receipt line *is* in this house. «חלב תנובה 3% 1ל» on the slip is our
+-- «חלב», and being asked that on every receipt is how this feature would get
+-- abandoned by the third week. A row with \`ignored\` is an answer too: «שקית»
+-- is never going into the pantry, and should stop being asked about.
+CREATE TABLE IF NOT EXISTS receipt_item_rules (
+  id          SERIAL PRIMARY KEY,
+  item_key    TEXT NOT NULL,
+  product_id  INTEGER REFERENCES products(id) ON DELETE CASCADE,
+  ignored     BOOLEAN NOT NULL DEFAULT FALSE,
+  hits        INTEGER NOT NULL DEFAULT 1,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ─────────────────────────────────────────────────────────────────────────
 -- Notifications
 -- ─────────────────────────────────────────────────────────────────────────
 
@@ -457,7 +512,8 @@ DECLARE
     'accounts', 'category_groups', 'categories', 'budget_allocations',
     'transactions', 'recurring_bills', 'settlements',
     'products', 'stock_entries', 'stock_log', 'shopping_items',
-    'sent_notifications', 'payee_rules'
+    'sent_notifications', 'payee_rules',
+    'receipts', 'receipt_lines', 'receipt_item_rules'
   ];
   scope_expr TEXT := 'nullif(current_setting(''casa.household_id'', true), '''')::int';
 BEGIN
@@ -596,4 +652,17 @@ BEGIN
           OR (installment_no >= 1 AND installments_total >= 2 AND installment_no <= installments_total));
   END IF;
 END $$;
+
+-- Receipts, scoped: these indexes need household_id, which the tenant loop
+-- above adds, so they live after it.
+CREATE UNIQUE INDEX IF NOT EXISTS receipts_once
+  ON receipts (household_id, fingerprint) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS receipts_transaction
+  ON receipts (transaction_id) WHERE transaction_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS receipt_item_rules_once
+  ON receipt_item_rules (household_id, item_key);
+-- A barcode on the slip is the one match that cannot be wrong, so it has to
+-- be cheap to look up.
+CREATE INDEX IF NOT EXISTS products_barcode
+  ON products (household_id, barcode) WHERE barcode IS NOT NULL;
 `;

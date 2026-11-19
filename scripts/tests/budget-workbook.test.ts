@@ -527,3 +527,20 @@ test('when «סכום עסקה» comes before «סכום חיוב», the charge 
   // A row with nothing charged on this statement is not a payment yet.
   assert.deepEqual(parsed.transactions.map((t) => [t.payee, t.amount]), [['שופרסל', -120]]);
 });
+
+test('a purchase a supermarket receipt already recorded is not recorded again from the statement', async () => {
+  const parsed = parseBudgetWorkbook(await read(statement()));
+  // The receipt wrote «רמי לוי» on the 14th; the statement says «רמי לוי גוש
+  // עציון» and dates it a day later. Same purchase.
+  const receipts = [{ id: 77, occurred_on: '2026-09-15', amount: -158.26 }];
+  const plan = planImport({ parsed, month: '2026-09-01', categories: [], groups: [], allocations: [], transactions: [], receipts });
+  assert.equal(plan.byReceipt, 1);
+  assert.equal(plan.duplicates, 1);
+  assert.ok(!plan.transactions.some((t) => t.payee === 'רמי לוי גוש עציון'));
+  assert.equal(plan.transactions.length, 2);
+
+  // A different amount is a different trip.
+  const other = planImport({ parsed, month: '2026-09-01', categories: [], groups: [], allocations: [], transactions: [], receipts: [{ id: 77, occurred_on: '2026-09-14', amount: -158.27 }] });
+  assert.equal(other.byReceipt, 0);
+  assert.equal(other.transactions.length, 3);
+});

@@ -5,6 +5,7 @@ import { date, int, num, oneOf, optionalDate, optionalInt, optionalNum, optional
 import { PRODUCT_SELECT, getProduct, keyFor, syncShoppingListFromStock } from '../_lib/pantry-service.js';
 import { applyConsumption } from '../../shared/pantry.js';
 import type { Product, StockEntry } from '../../shared/types.js';
+import { applyReceipt, listReceipts, previewReceipt } from './_receipts.js';
 
 const LOCATIONS = ['מזווה', 'מקרר', 'מקפיא', 'אמבטיה', 'ניקיון', 'אחר'] as const;
 
@@ -291,4 +292,10 @@ export default router([
   },
 
   { method: 'POST', path: 'sync-list', handle: async (ctx) => syncShoppingListFromStock(ctx.user.email) },
+
+  // Supermarket receipts. Here and not in a module of their own: they are the
+  // pantry's way in, and a new file under api/ would be a seventh function.
+  { method: 'GET', path: 'receipts', role: 'viewer', handle: listReceipts },
+  { method: 'POST', path: 'receipts/preview', handle: previewReceipt },
+  { method: 'POST', path: 'receipts', handle: applyReceipt },
 ]);

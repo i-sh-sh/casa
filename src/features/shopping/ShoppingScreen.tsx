@@ -5,6 +5,7 @@ import { useSession } from '../../lib/session.js';
 import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, useFolds, useToast } from '../../ui/kit.js';
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
+import { ReceiptSheet } from '../pantry/ReceiptSheet.js';
 import { sortForShopping } from '@shared/pantry.js';
 import { formatILS } from '@shared/money.js';
 import type { Account, Category, ShoppingItem } from '@shared/types.js';
@@ -37,6 +38,7 @@ export function ShoppingScreen() {
   });
   const [adding, setAdding] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
+  const [receipt, setReceipt] = useState(false);
   const toast = useToast();
   const outbox = useOutbox();
   const folds = useFolds('shopping');
@@ -164,12 +166,23 @@ export function ShoppingScreen() {
             </button>
           </div>
         )}
+        {/* After the shop, the receipt does the ticking: what was bought comes
+            off the list and goes into the pantry, without walking the list. */}
+        <button className="btn btn-quiet btn-block" style={{ marginTop: 'var(--s3)' }} onClick={() => setReceipt(true)}>
+          חזרתם מהסופר? הדביקו את הקבלה
+        </button>
       </div>
 
       {adding && (
         <AddItemSheet
           onClose={() => setAdding(false)}
           onAdded={(aisle) => { setAdding(false); folds.reveal(aisle); list.reload(); }}
+        />
+      )}
+      {receipt && (
+        <ReceiptSheet
+          onClose={() => setReceipt(false)}
+          onDone={(message) => { setReceipt(false); list.reload(); toast.show(message); }}
         />
       )}
       {checkingOut && (
