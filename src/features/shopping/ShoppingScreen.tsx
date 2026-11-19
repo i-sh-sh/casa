@@ -6,6 +6,7 @@ import { AsyncForm, Empty, ErrorNote, Field, Fold, Loading, Sheet, useAsync, use
 import { Icon } from '../../ui/Icon.js';
 import { TopBar } from '../../ui/TopBar.js';
 import { ReceiptSheet } from '../pantry/ReceiptSheet.js';
+import { useRouter } from '../../lib/router.js';
 import { sortForShopping } from '@shared/pantry.js';
 import { formatILS } from '@shared/money.js';
 import type { Account, Category, ShoppingItem } from '@shared/types.js';
@@ -39,6 +40,27 @@ export function ShoppingScreen() {
   const [adding, setAdding] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [receipt, setReceipt] = useState(false);
+  const [shared, setShared] = useState<string | null>(null);
+  const router = useRouter();
+
+  // A receipt shared from another app arrives here by way of the service
+  // worker (public/sw.js, receiveShare), which leaves the text in a cache
+  // entry. Read once, then gone, so a reload does not import it twice.
+  useEffect(() => {
+    if (router.path !== '/shopping/receipt') return;
+    void (async () => {
+      try {
+        const cache = await caches.open('casa-share');
+        const res = await cache.match('/__shared-receipt');
+        await cache.delete('/__shared-receipt');
+        const text = res ? await res.text() : '';
+        if (text.trim()) { setShared(text); setReceipt(true); }
+      } catch {
+        // No cache storage: nothing was shared that we can read.
+      }
+      router.navigate('/shopping', { replace: true });
+    })();
+  }, [router.path]);
   const [editing, setEditing] = useState<ShoppingItem | null>(null);
   const toast = useToast();
   const outbox = useOutbox();
@@ -207,8 +229,9 @@ export function ShoppingScreen() {
       )}
       {receipt && (
         <ReceiptSheet
-          onClose={() => setReceipt(false)}
-          onDone={(message) => { setReceipt(false); list.reload(); toast.show(message); }}
+          initialText={shared}
+          onClose={() => { setReceipt(false); setShared(null); }}
+          onDone={(message) => { setReceipt(false); setShared(null); list.reload(); toast.show(message); }}
         />
       )}
       {checkingOut && (
