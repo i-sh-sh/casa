@@ -7,6 +7,7 @@ import { applyConsumption } from '../../shared/pantry.js';
 import { normalizeHabits, planWeek, weekStart } from '../../shared/meals.js';
 import { cook, loadRecipes, saveRecipe, setDay, stockFacts, syncMealsToList, weekEntries } from '../_lib/meals-service.js';
 import type { MealHabits, Product, StockEntry } from '../../shared/types.js';
+import { applyReceipt, listReceipts, previewReceipt } from './_receipts.js';
 
 const LOCATIONS = ['מזווה', 'מקרר', 'מקפיא', 'אמבטיה', 'ניקיון', 'אחר'] as const;
 
@@ -422,4 +423,10 @@ export default router([
     },
   },
   { method: 'POST', path: 'meals/sync', handle: (ctx) => resync(ctx.user.email) },
+
+  // Supermarket receipts. Here and not in a module of their own: they are the
+  // pantry's way in, and a new file under api/ would be a seventh function.
+  { method: 'GET', path: 'receipts', role: 'viewer', handle: listReceipts },
+  { method: 'POST', path: 'receipts/preview', handle: previewReceipt },
+  { method: 'POST', path: 'receipts', handle: applyReceipt },
 ]);

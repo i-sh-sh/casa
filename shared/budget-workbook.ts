@@ -951,6 +951,8 @@ export interface ImportPlan {
     installment_no: number | null; installments_total: number | null; charged_on: string | null;
   }[];
   duplicates: number;
+  /** Of the duplicates, the ones a supermarket receipt had already recorded. */
+  byReceipt: number;
   /** Rows with no «סעיף» of their own, filed by an earlier decision about the same payee. */
   byPayee: number;
   /** One per line whose «בפועל» differs from its transactions. Replaces any earlier one. */
@@ -979,6 +981,30 @@ export interface MonthPlan {
   retire: number[];
 }
 
+const DAY = 86_400_000;
+const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY;
+
+/**
+ * Whether a card-statement row is a purchase a receipt already recorded.
+ *
+ * The amount has to be exact; the date may drift by a few days, because the
+ * card company dates some charges by when they cleared. The payee is not
+ * compared at all: the statement says «רמי לוי שיווק השקמה» where the receipt
+ * said «רמי לוי», and that difference is the whole reason the ordinary
+ * duplicate check misses it. Each receipt is used once, so two equal trips
+ * stay two rows.
+ */
+export function takeReceiptMatch(
+  row: { date: string; amount: number },
+  receipts: { id: number; occurred_on: string; amount: number }[],
+  used: Set<number>,
+): number | null {
+  const hit = receipts.find((r) => !used.has(r.id) && cents(r.amount) === cents(row.amount) && daysApart(r.occurred_on, row.date) <= 3);
+  if (!hit) return null;
+  used.add(hit.id);
+  return hit.id;
+}
+
 const txKey = (date: string, amount: number, payee: string) => `${date}|${cents(amount).toFixed(2)}|${nameKey(payee)}`;
 const isSavingGroup = (group: string) => /חיסכון|חסכון/.test(group);
 
@@ -1001,13 +1027,15 @@ export function planImport(params: {
   rules?: { payee_key: string; category_id: number }[];
   /** The rest of the file's year, for the annual sheets: allocations and rows by month. */
   history?: { allocations: { month: string; category_id: number; allocated: number }[]; transactions: ExistingTransaction[] };
+  /** Expenses written from supermarket receipts, a few days either side of the month. */
+  receipts?: { id: number; occurred_on: string; amount: number }[];
 }): ImportPlan {
   const { parsed, month, categories, groups, allocations, transactions } = params;
   const rules = new Map((params.rules ?? []).map((r) => [r.payee_key, r.category_id]));
   const live = new Set(categories.map((c) => c.id));
   const plan: ImportPlan = {
     month, newGroups: [], newCategories: [], commitments: [], allocations: [], unchangedAllocations: 0,
-    transactions: [], duplicates: 0, byPayee: 0, adjustments: [], retire: [], unmatched: [], months: [], warnings: [...parsed.warnings],
+    transactions: [], duplicates: 0, byReceipt: 0, byPayee: 0, adjustments: [], retire: [], unmatched: [], months: [], warnings: [...parsed.warnings],
   };
   const monthEnd = addMonths(month, 1);
   const inMonth = (d: string) => d >= month && d < monthEnd;
@@ -1077,6 +1105,7 @@ export function planImport(params: {
     seen.set(k, (seen.get(k) ?? 0) + 1);
   }
 
+  const usedReceipts = new Set<number>();
   const fileSums = new Map<string, number>();
   for (const t of parsed.transactions) {
     // An adjustment row in the file is one this app wrote on export. It is
@@ -1103,6 +1132,11 @@ export function planImport(params: {
     if (have > 0) {
       seen.set(k, have - 1);
       plan.duplicates++;
+      continue;
+    }
+    if (takeReceiptMatch({ date: t.date, amount: t.amount }, params.receipts ?? [], usedReceipts) != null) {
+      plan.duplicates++;
+      plan.byReceipt++;
       continue;
     }
     if (ruled) plan.byPayee++;
@@ -1220,6 +1254,7 @@ export interface ImportSummary {
   transactions: number;
   transactions_total: number;
   duplicates: number;
+  by_receipt: number;
   by_payee: number;
   /** New rows that go in with no category: nothing in the file or in the rules said where. */
   unfiled: number;
@@ -1246,6 +1281,7 @@ export function summarizePlan(plan: ImportPlan, accountName: string | null, appl
     transactions: plan.transactions.length,
     transactions_total: cents(plan.transactions.reduce((s, t) => s + t.amount, 0)),
     duplicates: plan.duplicates,
+    by_receipt: plan.byReceipt,
     by_payee: plan.byPayee,
     unfiled: plan.transactions.filter((t) => !t.category).length,
     installments: plan.transactions.filter((t) => t.installment_no).length,

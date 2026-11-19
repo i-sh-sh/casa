@@ -191,6 +191,17 @@ async function planFor(parsed: ParsedBudget, month: string): Promise<ImportPlan>
     ),
     query<{ payee_key: string; category_id: number }>(`SELECT payee_key, category_id FROM payee_rules`),
   ]);
+  // The expenses receipts already wrote, so the card statement does not write
+  // them again. Three days past either edge of the month, for the same reason
+  // takeReceiptMatch allows three days: a charge can be dated when it cleared.
+  const receipts = await query<{ id: number; occurred_on: string; amount: number }>(
+    `SELECT t.id, to_char(t.occurred_on, 'YYYY-MM-DD') AS occurred_on, t.amount
+       FROM receipts r JOIN transactions t ON t.id = r.transaction_id
+      WHERE r.deleted_at IS NULL AND t.deleted_at IS NULL
+        AND t.occurred_on >= ($1::date - INTERVAL '3 days')
+        AND t.occurred_on < ($1::date + INTERVAL '1 month' + INTERVAL '3 days')`,
+    [month],
+  );
   // The annual sheets reach the rest of the file's year; nothing is read for
   // them unless the file has one.
   const history = parsed.years?.length
@@ -211,7 +222,7 @@ async function planFor(parsed: ParsedBudget, month: string): Promise<ImportPlan>
       ),
     ]).then(([a, t]) => ({ allocations: a, transactions: t }))
     : undefined;
-  return planImport({ parsed, month, categories, groups: groups.map((g) => g.name), allocations, transactions, rules, history });
+  return planImport({ parsed, month, categories, groups: groups.map((g) => g.name), allocations, transactions, rules, history, receipts });
 }
 
 /**
