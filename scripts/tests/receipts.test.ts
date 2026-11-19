@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   detectStore, findDate, matchLine, parseReceipt, parseReceiptJson, parseReceiptText,
-  planListClear, receiptFingerprint,
+  planListClear, receiptFingerprint, receiptLink,
 } from '../../shared/receipts.ts';
 import { takeReceiptMatch } from '../../shared/budget-workbook.ts';
 
@@ -203,4 +203,16 @@ test('the same page when amount and quantity copy onto one line', () => {
 
 test('the one-line layout is still read the old way', () => {
   assert.equal(parseReceiptText(ONE_LINE).lines.length, 3);
+});
+
+test('a pasted SMS gives the receipt it links to, and only from a known host', () => {
+  const sms = 'התקבלה קבלה חדשה מרמי לוי שיווק השקמה לצפייה לחץ כאן\nhttps://digi.rami-levy.co.il/DeS17qEBswDncaolHKWg';
+  assert.deepEqual(receiptLink(sms), {
+    store: 'רמי לוי',
+    page: 'https://digi.rami-levy.co.il/DeS17qEBswDncaolHKWg',
+    data: 'https://digi-api.rami-levy.co.il/api/client/documents/DeS17qEBswDncaolHKWg',
+  });
+  assert.equal(receiptLink('https://digi.rami-levy.co.il.evil.com/DeS17qEBswDncaolHKWg'), null);
+  assert.equal(receiptLink('https://evil.com/?u=https://digi.rami-levy.co.il/../x'), null);
+  assert.equal(receiptLink('חלב 6.90'), null);
 });

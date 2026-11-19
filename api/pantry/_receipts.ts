@@ -6,7 +6,7 @@ import { keyFor } from '../_lib/pantry-service.js';
 import { learnPayee } from '../money/_payees.js';
 import { nameKey } from '../../shared/budget-workbook.js';
 import {
-  itemKey, matchLine, parseReceipt, planListClear, receiptFingerprint,
+  itemKey, jsonShape, matchLine, parseReceipt, parseReceiptJson, planListClear, receiptFingerprint, receiptLink,
   type ItemRule, type ListItem, type MatchProduct, type ParsedReceipt,
 } from '../../shared/receipts.js';
 
@@ -33,10 +33,46 @@ async function lookups() {
   return { products, rules };
 }
 
-/** Reads pasted receipt text (or the receipt's JSON) and proposes a product for each line. */
+/**
+ * Opens the receipt a link points at, from here.
+ *
+ * The browser tries first (ReceiptSheet), because the phone is where the
+ * chain expects the receipt to be opened. This is the fallback for when the
+ * browser is refused. The URL is never the one that was pasted: receiptLink
+ * rebuilds it from the id, for a host it knows.
+ */
+async function fetchLinked(text: string): Promise<ParsedReceipt | null> {
+  const link = receiptLink(text);
+  if (!link) return null;
+  let res: Response;
+  try {
+    res = await fetch(link.data, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(8000) });
+  } catch {
+    throw badRequest('לא הצלחתי לפתוח את הקבלה מהקישור. נסו שוב, או הדביקו את טקסט הקבלה.');
+  }
+  if (!res.ok) {
+    throw badRequest(`${link.store} לא נתנו לפתוח את הקבלה מכאן (${res.status}). פתחו את הקישור, העתיקו את הטקסט והדביקו אותו כאן.`);
+  }
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    throw badRequest('הקישור לא החזיר קבלה שאפשר לקרוא. הדביקו את טקסט הקבלה במקום.');
+  }
+  const parsed = parseReceiptJson(data);
+  if (!parsed.store) parsed.store = link.store;
+  // Keys only, never values: enough to fix the parser, nothing personal.
+  if (parsed.lines.length === 0) console.warn('receipt link: no items found', jsonShape(data));
+  return parsed;
+}
+
+/** Reads pasted receipt text, the receipt's JSON, or a link to it, and proposes a product for each line. */
 export async function previewReceipt(ctx: Ctx) {
   const text = str(ctx.body['text'], 'הקבלה', { max: MAX_TEXT });
-  const parsed: ParsedReceipt = parseReceipt(text);
+  let parsed: ParsedReceipt = parseReceipt(text);
+  // A pasted SMS has a link and nothing to read in itself.
+  if (parsed.lines.length === 0) parsed = (await fetchLinked(text)) ?? parsed;
+  if (parsed.lines.length === 0) throw badRequest(parsed.warnings.join(' · ') || 'לא מצאתי פריטים');
   if (parsed.lines.length > MAX_LINES) throw badRequest(`יותר מ-${MAX_LINES} שורות בקבלה`);
 
   const { products, rules } = await lookups();

@@ -374,7 +374,7 @@ export function parseReceiptJson(data: unknown): ParsedReceipt {
     && toAmount(s.value) != null);
   const dateScalar = scalars.find((s) => /date|time|תאריך/i.test(s.key) && typeof s.value === 'string' && findDate(s.value));
 
-  if (best.length === 0) warnings.push('לא מצאתי פריטים בקובץ');
+  if (best.length === 0) warnings.push(`לא מצאתי פריטים בקובץ. מבנה: ${jsonShape(data).slice(0, 400)}`);
   return {
     store: detectStore(text),
     purchased_on: dateScalar ? findDate(String(dateScalar.value)) : findDate(text),
@@ -511,4 +511,33 @@ export function planListClear(
     if (item.status === 'bought' && item.product_id != null) alreadyStocked.add(item.product_id);
   }
   return { clear, alreadyStocked };
+}
+
+// ── A receipt link ───────────────────────────────────────────────────────
+
+/**
+ * The receipt a pasted SMS points at, if it is one we know how to open.
+ *
+ * Only exact hosts, never a URL taken as given: the server fetches what this
+ * returns, and a server that fetches whatever URL it is handed is a server
+ * that can be pointed at anything.
+ */
+export function receiptLink(text: string): { store: string; page: string; data: string } | null {
+  const rami = text.match(/https?:\/\/digi\.rami-levy\.co\.il\/([A-Za-z0-9_-]{6,64})(?![A-Za-z0-9_-])/);
+  if (rami) {
+    const id = rami[1]!;
+    return {
+      store: 'רמי לוי',
+      page: `https://digi.rami-levy.co.il/${id}`,
+      data: `https://digi-api.rami-levy.co.il/api/client/documents/${id}`,
+    };
+  }
+  return null;
+}
+
+/** The keys of a JSON document, a few levels deep — what to report when no items were found in it. */
+export function jsonShape(data: unknown, depth = 0): string {
+  if (depth > 2 || data == null || typeof data !== 'object') return typeof data;
+  if (Array.isArray(data)) return `[${data.length ? jsonShape(data[0], depth + 1) : ''}]`;
+  return `{${Object.entries(data as Record<string, unknown>).slice(0, 30).map(([k, v]) => `${k}:${jsonShape(v, depth + 1)}`).join(',')}}`;
 }

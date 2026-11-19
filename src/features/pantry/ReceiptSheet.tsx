@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { AsyncForm, Field, Sheet } from '../../ui/kit.js';
 import { formatILS } from '@shared/money.js';
-import type { MatchHow } from '@shared/receipts.js';
+import { receiptLink, type MatchHow } from '@shared/receipts.js';
 
 interface PreviewLine {
   name: string;
@@ -49,31 +49,67 @@ export function ReceiptSheet({ onClose, onDone }: { onClose: () => void; onDone:
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
 
+  const form = useRef<HTMLDivElement>(null);
+
+  /**
+   * A link is opened here, in the browser, first: that is where the chain
+   * expects its receipt to be opened, and it is what lets the whole thing be
+   * «paste the SMS» instead of «open, expand, select, copy, paste». If the
+   * browser is refused, the server tries the same link.
+   */
+  async function read(input: string) {
+    let payload = input;
+    const link = receiptLink(input);
+    if (link) {
+      try {
+        const res = await fetch(link.data, { headers: { accept: 'application/json' } });
+        if (res.ok) payload = await res.text();
+      } catch {
+        // Refused by the browser; the server tries next.
+      }
+    }
+    setPreview(await api.post<Preview>('/pantry/receipts/preview', { text: payload }));
+  }
+
+  async function pasteAndRead() {
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (!clip.trim()) return;
+      setText(clip);
+      // Submitting through the form keeps one place that shows the error.
+      setTimeout(() => form.current?.querySelector('form')?.requestSubmit(), 0);
+    } catch {
+      // No clipboard permission: the field below still takes a paste.
+    }
+  }
+
   if (!preview) {
+    const hasLink = receiptLink(text) != null;
     return (
       <Sheet title="קבלה מהסופר" onClose={onClose}>
-        <AsyncForm
-          submitLabel="קריאת הקבלה"
-          disabled={!text.trim()}
-          onSubmit={async () => setPreview(await api.post<Preview>('/pantry/receipts/preview', { text }))}
-        >
-          <ol className="meta" style={{ margin: '0 0 var(--s4)', paddingInlineStart: '1.2em', lineHeight: 1.7 }}>
-            <li>פותחים את הקישור מה-SMS של הסופר.</li>
-            <li>לוחצים «הצגת עוד פריטים» עד שכל הפריטים מופיעים.</li>
-            <li>מסמנים הכול, מעתיקים ומדביקים כאן.</li>
-          </ol>
-          <Field label="הקבלה">
-            <textarea
-              className="input"
-              rows={8}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="מדביקים כאן את כל הטקסט של הקבלה"
-              autoFocus
-              style={{ fontFamily: 'inherit', resize: 'vertical' }}
-            />
-          </Field>
-        </AsyncForm>
+        <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
+          מעתיקים את ה-SMS מהסופר, או רק את הקישור שבו, ומדביקים.
+        </p>
+        <button type="button" className="btn btn-primary btn-block" style={{ marginBottom: 'var(--s4)' }} onClick={() => void pasteAndRead()}>
+          הדבקה וקריאה
+        </button>
+        <div ref={form}>
+          <AsyncForm submitLabel={hasLink ? 'פתיחת הקבלה מהקישור' : 'קריאת הקבלה'} disabled={!text.trim()} onSubmit={() => read(text)}>
+            <Field label="או מדביקים כאן">
+              <textarea
+                className="input"
+                rows={4}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="https://digi.rami-levy.co.il/…"
+                style={{ fontFamily: 'inherit', resize: 'vertical' }}
+              />
+            </Field>
+          </AsyncForm>
+        </div>
+        <p className="meta" style={{ marginTop: 'var(--s3)' }}>
+          אפשר גם להדביק את כל הטקסט של הקבלה, אחרי «הצגת עוד פריטים».
+        </p>
       </Sheet>
     );
   }
