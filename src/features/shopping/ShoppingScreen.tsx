@@ -220,7 +220,7 @@ export function ShoppingScreen() {
 function Row({ item, onToggle, onEdit }: { item: ShoppingItem; onToggle: () => void; onEdit: () => void }) {
   const done = item.status === 'bought';
   return (
-    <div className={`row ${item.source === 'auto_min_stock' && !done ? 'by-system' : ''}`}>
+    <div className={`row ${item.source !== 'manual' && !done ? 'by-system' : ''}`}>
       <button
         onClick={onToggle}
         aria-pressed={done}
@@ -237,6 +237,7 @@ function Row({ item, onToggle, onEdit }: { item: ShoppingItem; onToggle: () => v
           <span className={`title ${done ? 'struck' : ''}`} style={{ display: 'block' }}>{item.name}</span>
           <span className="meta">
             {item.source === 'auto_min_stock' && !done && <span className="mark mark-blue">נגמר במזווה · </span>}
+            {item.source === 'recipe' && !done && <span className="mark mark-blue">לארוחות · </span>}
             {item.note}
           </span>
         </span>

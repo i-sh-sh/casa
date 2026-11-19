@@ -11,6 +11,9 @@ import { TransactionsScreen } from '../features/money/TransactionsScreen.js';
 import { AccountsScreen } from '../features/money/AccountsScreen.js';
 import { MONEY_PATHS } from '../features/money/MoneyTabs.js';
 import { PantryScreen } from '../features/pantry/PantryScreen.js';
+import { MealsScreen } from '../features/kitchen/MealsScreen.js';
+import { RecipesScreen } from '../features/kitchen/RecipesScreen.js';
+import { KITCHEN_PATHS } from '../features/kitchen/KitchenTabs.js';
 import { ShoppingScreen } from '../features/shopping/ShoppingScreen.js';
 import { SettingsScreen } from '../features/settings/SettingsScreen.js';
 import { AdminScreen } from '../features/admin/AdminScreen.js';
@@ -21,11 +24,12 @@ import { useVersion } from '../lib/version.js';
 import { afterPrefix } from '@shared/hebrew.js';
 
 // «כסף» rather than «תקציב»: the tab now holds the budget, the transactions
-// and the accounts, and lights up on any of them.
+// and the accounts, and lights up on any of them. «מטבח» rather than «מזווה»
+// for the same reason: the pantry, the week's meals and the recipes.
 const TABS: { to: string; icon: IconName; label: string; also?: string[] }[] = [
   { to: '/',         icon: 'home',   label: 'הבית' },
   { to: '/shopping', icon: 'cart',   label: 'קניות' },
-  { to: '/pantry',   icon: 'pantry', label: 'מזווה' },
+  { to: '/pantry',   icon: 'pantry', label: 'מטבח', also: KITCHEN_PATHS },
   { to: '/budget',   icon: 'ledger', label: 'כסף', also: MONEY_PATHS },
   { to: '/settings', icon: 'dials',  label: 'הגדרות' },
 ];
@@ -58,6 +62,8 @@ function Screen() {
   if (path === '/') return <HomeScreen />;
   if (path.startsWith('/shopping')) return <ShoppingScreen />;
   if (path.startsWith('/pantry')) return <PantryScreen />;
+  if (path.startsWith('/meals')) return <MealsScreen />;
+  if (path.startsWith('/recipes')) return <RecipesScreen />;
   if (path.startsWith('/budget/excel')) return <WorkbookScreen />;
   if (path.startsWith('/budget')) return <BudgetScreen />;
   if (path.startsWith('/transactions')) return <TransactionsScreen />;

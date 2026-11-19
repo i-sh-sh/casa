@@ -130,4 +130,5 @@ export function findSheet(name: string): Sheet | undefined {
 export const BACKUP_TABLES = [
   'accounts', 'category_groups', 'categories', 'budget_allocations', 'transactions',
   'recurring_bills', 'settlements', 'products', 'stock_entries', 'stock_log', 'shopping_items', 'payee_rules',
+  'recipes', 'recipe_ingredients', 'meal_plan', 'meal_settings',
 ] as const;
