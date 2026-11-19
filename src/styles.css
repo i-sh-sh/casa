@@ -360,6 +360,10 @@ a { color: inherit; }
    assumed: a rendered pass caught these at 40px. */
 .btn-quiet { border-color: transparent; color: var(--ink-2); min-height: 44px; min-width: 44px; padding: 0 var(--s2); }
 .btn-sm { min-height: 44px; min-width: 44px; font-size: 14px; padding: 0 var(--s3); }
+/* A toggle among buttons — a day, a kind, «תמיד יש». Filled in ink when on,
+   the same inversion the primary button uses, so «chosen» reads the same way
+   everywhere and needs no colour of its own. */
+.btn[aria-pressed='true'] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 
 /* ── Navigation ──────────────────────────────────────────────────────── */
 /*

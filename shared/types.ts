@@ -298,3 +298,56 @@ export interface ShoppingItem {
   bought_at: string | null;
   bought_by: string | null;
 }
+
+// ── Recipes & meals ──────────────────────────────────────────────────────
+
+export type RecipeKind = 'בשר' | 'עוף' | 'דגים' | 'חלבי' | 'צמחוני';
+export type Effort = 'מהיר' | 'רגיל' | 'ארוך';
+
+export interface Ingredient {
+  id?: number;
+  product_id: number | null;
+  name: string;
+  /** Null for «קורט מלח»: something, but nothing anybody can count. */
+  qty: number | null;
+  unit: string | null;
+  always_have: boolean;
+}
+
+export interface Recipe {
+  id: number;
+  name: string;
+  kind: RecipeKind;
+  effort: Effort;
+  /** 1 = בסדר, 2 = טוב, 3 = אוהבים במיוחד. */
+  liking: number;
+  servings: number | null;
+  source: string | null;
+  note: string | null;
+  archived_at: string | null;
+  ingredients: Ingredient[];
+  /** Learned from «בישלנו», never typed. */
+  last_cooked: string | null;
+  times_cooked: number;
+}
+
+export interface MealHabits {
+  /** Which days get a planned dinner. 0 = Sunday. */
+  days: number[];
+  /** Meat or chicken, at most this many dinners a week. */
+  meat_max: number;
+  veggie_days: number[];
+  quick_days: number[];
+  /** Days before a recipe may come back. */
+  repeat_gap: number;
+}
+
+export interface MealEntry {
+  id: number;
+  day: string;
+  recipe_id: number;
+  recipe_name: string;
+  kind: RecipeKind;
+  effort: Effort;
+  status: 'planned' | 'cooked';
+}
