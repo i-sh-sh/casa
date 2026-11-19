@@ -110,7 +110,127 @@ const toNumber = (s: string) => Number(s.replace(',', '.'));
  * no amount is a name whose numbers are on the next line, which is how most
  * receipt pages wrap on a phone.
  */
+// ── The receipt page, one card per item ──────────────────────────────────
+
+/** A line that is only an amount: «₪19.47», «19.47 ₪», «-2.00». */
+const PRICE_ONLY = /^(?:₪\s*)?(-?\d{1,6}[.,]\d{2})(?:\s*₪)?$/;
+/** A line that is only a quantity: «1 יח'», «3.974 ק"ג». */
+const QTY_ONLY = /^(\d{1,4}(?:[.,]\d{1,3})?)\s*(?:יח['׳]?|יחידות|ק["״]?ג|קג)\.?$/;
+/** Both on one line, in either order. */
+const PRICE_QTY = /^(?:₪\s*)?(-?\d{1,6}[.,]\d{2})(?:\s*₪)?\s+(\d{1,4}(?:[.,]\d{1,3})?)\s*(?:יח['׳]?|יחידות|ק["״]?ג|קג)\.?$/;
+const QTY_PRICE = /^(\d{1,4}(?:[.,]\d{1,3})?)\s*(?:יח['׳]?|יחידות|ק["״]?ג|קג)\.?\s+(?:₪\s*)?(-?\d{1,6}[.,]\d{2})(?:\s*₪)?$/;
+const TOTAL_WORDS = /סה["״']?כ|סך\s*הכל|לתשלום|שולם/;
+
+const clean = (raw: string) => raw.replace(/[\u200e\u200f\u202a-\u202e]/g, '').replace(/\s+/g, ' ').trim();
+
+/**
+ * Whether this is the receipt page as Rami Levy shows it (and as copying it
+ * off a phone produces): each item a small card — its name, its code, then
+ * the amount and the quantity, each on a line of their own.
+ *
+ * On that page the name carries numbers that are not prices («1.5*6 ליטר»,
+ * «5 * 100 גרם»), so the line-at-a-time reading would take them for amounts.
+ * Here an amount is only ever a line that is nothing but an amount.
+ */
+export function looksLikeCards(text: string): boolean {
+  const ls = text.split(/\r?\n/).map(clean);
+  return ls.filter((l) => PRICE_ONLY.test(l) || PRICE_QTY.test(l) || QTY_PRICE.test(l)).length >= 2
+    && ls.some((l) => QTY_ONLY.test(l) || PRICE_QTY.test(l) || QTY_PRICE.test(l));
+}
+
+export function parseCardText(text: string): ParsedReceipt {
+  const lines: ReceiptLine[] = [];
+  let total: number | null = null;
+  let expectTotal = false;
+  let name: string[] = [];
+  let barcode: string | null = null;
+  let qty: number | null = null;
+  let price: number | null = null;
+  /** The item just closed, still open to its quantity line. */
+  let last: ReceiptLine | null = null;
+  let lastHasQty = false;
+
+  const close = () => {
+    if (price == null) return;
+    if (price < 0 && name.length === 0 && lines.length > 0) {
+      // A discount card under the item it belongs to.
+      const prev = lines[lines.length - 1]!;
+      if (prev.total != null) prev.total = cents(prev.total + price);
+    } else if (name.length) {
+      last = { name: name.join(' ').slice(0, 120), barcode, qty: round3(qty ?? 1), total: cents(price) };
+      lastHasQty = qty != null;
+      lines.push(last);
+    }
+    name = []; barcode = null; qty = null; price = null;
+  };
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = clean(raw);
+    if (!line) continue;
+
+    let m: RegExpMatchArray | null;
+    if ((m = line.match(PRICE_ONLY))) {
+      const amount = toNumber(m[1]!);
+      if (expectTotal) { total = Math.abs(amount); expectTotal = false; continue; }
+      price = amount;
+      close();
+      continue;
+    }
+    if ((m = line.match(PRICE_QTY)) || (m = line.match(QTY_PRICE))) {
+      const priceFirst = PRICE_QTY.test(line);
+      price = toNumber(priceFirst ? m[1]! : m[2]!);
+      qty = toNumber(priceFirst ? m[2]! : m[1]!);
+      close();
+      continue;
+    }
+    if ((m = line.match(QTY_ONLY))) {
+      const n = toNumber(m[1]!);
+      // `last` is set inside close(), which the compiler cannot see.
+      const prev = last as ReceiptLine | null;
+      if (prev && !lastHasQty && name.length === 0) { prev.qty = round3(n); lastHasQty = true; }
+      else qty = n;
+      continue;
+    }
+    if (/^\d{1,14}$/.test(line)) {
+      // The item's code. Only a full barcode is worth keeping: «300» is the
+      // chain's own number for loose produce and matches nothing of ours.
+      if (line.length >= 7) barcode = line;
+      continue;
+    }
+    if (TOTAL_WORDS.test(line)) {
+      const amounts = numbersIn(line).filter((n) => n > 0);
+      if (amounts.length) total = Math.max(...amounts);
+      else expectTotal = true;
+      name = [];
+      continue;
+    }
+    expectTotal = false;
+    const isHeader = STORES.some((st) => st.pattern.test(line) && !LETTERS.test(line.replace(st.pattern, '')));
+    if (isHeader || NOT_AN_ITEM.test(line) || DISCOUNT.test(line) && !LETTERS.test(line.replace(DISCOUNT, ''))) {
+      name = [];
+      continue;
+    }
+    // A name line. A second one in a row continues a long name; one after a
+    // closed item starts the next.
+    if (LETTERS.test(line)) {
+      const trailing = line.match(/\s(\d{7,14})$/);
+      if (trailing) { barcode = trailing[1]!; name.push(line.slice(0, -trailing[0].length)); }
+      else name.push(line);
+      last = null;
+    }
+  }
+
+  const warnings: string[] = [];
+  if (lines.length === 0) warnings.push('לא מצאתי פריטים בטקסט');
+  const declared = text.match(/(\d{1,3})\s*פריטים/);
+  if (declared && Number(declared[1]) !== lines.length && lines.length > 0) {
+    warnings.push(`בקבלה כתוב ${declared[1]} פריטים ומצאתי ${lines.length}. אולי לא נלחץ «הצגת עוד פריטים»`);
+  }
+  return { store: detectStore(text), purchased_on: findDate(text), total, lines, warnings };
+}
+
 export function parseReceiptText(text: string): ParsedReceipt {
+  if (looksLikeCards(text)) return parseCardText(text);
   const warnings: string[] = [];
   const lines: ReceiptLine[] = [];
   let total: number | null = null;

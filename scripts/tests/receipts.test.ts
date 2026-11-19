@@ -143,3 +143,64 @@ test('a statement row finds the receipt by amount and a few days, once', () => {
   assert.equal(takeReceiptMatch({ date: '2026-11-20', amount: -23.24 }, receipts, used), null, 'each receipt is used once');
   assert.equal(takeReceiptMatch({ date: '2026-11-25', amount: -23.24 }, receipts, new Set()), null);
 });
+
+// The receipt page as Rami Levy actually shows it (seen 2026-11-19), copied
+// off a phone: a card per item — name, code, amount, quantity — each on a
+// line of its own, with names that carry numbers which are not prices.
+const RAMI_LEVY_PAGE = `רמי לוי שיווק השקמה
+סל הקניות הזול במדינה!
+היי ישראל,
+הקבלה הדיגיטלית שלך
+קבלה 172036418
+18/11/2026
+14:50
+סניף אינטרנט גבעת שאול מהדרין
+סה"כ שולם
+₪478.43
+29 פריטים
+תפוח אדמה אדום ארוז
+300
+₪19.47
+3.974 ק"ג
+שמן בריאות קנולה עץ הזית 1 ליטר
+7290000144474
+₪14.10
+1 יח'
+פופקורן בטעם טבעי למיקרוגל פופ סטאר 5 *
+100 גרם
+7290000420325
+₪15.30
+1 יח'
+עדשים ירוקות 500ג רמי לוי
+7290016865837
+₪7.00
+1 יח'
+מים מינרלים מי עדן 1.5*6 ליטר
+7290019056973
+₪31.00
+2 יח'`;
+
+test('the Rami Levy receipt page, copied off the phone', () => {
+  const r = parseReceiptText(RAMI_LEVY_PAGE);
+  assert.equal(r.store, 'רמי לוי');
+  assert.equal(r.purchased_on, '2026-11-18');
+  assert.equal(r.total, 478.43);
+  assert.deepEqual(r.lines.map((l) => [l.name, l.barcode, l.qty, l.total]), [
+    ['תפוח אדמה אדום ארוז', null, 3.974, 19.47],
+    ['שמן בריאות קנולה עץ הזית 1 ליטר', '7290000144474', 1, 14.1],
+    ['פופקורן בטעם טבעי למיקרוגל פופ סטאר 5 * 100 גרם', '7290000420325', 1, 15.3],
+    ['עדשים ירוקות 500ג רמי לוי', '7290016865837', 1, 7],
+    ['מים מינרלים מי עדן 1.5*6 ליטר', '7290019056973', 2, 31],
+  ]);
+  // Five of 29: the page was copied before «הצגת עוד פריטים».
+  assert.ok(r.warnings.some((w) => w.includes('29')));
+});
+
+test('the same page when amount and quantity copy onto one line', () => {
+  const r = parseReceiptText('שמן קנולה\n7290000144474\n₪14.10 1 יח\'\nמים מי עדן\n7290019056973\n2 יח\' ₪31.00');
+  assert.deepEqual(r.lines.map((l) => [l.name, l.qty, l.total]), [['שמן קנולה', 1, 14.1], ['מים מי עדן', 2, 31]]);
+});
+
+test('the one-line layout is still read the old way', () => {
+  assert.equal(parseReceiptText(ONE_LINE).lines.length, 3);
+});
