@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api.js';
 import { AsyncForm, Field, Sheet } from '../../ui/kit.js';
 import { formatILS } from '@shared/money.js';
@@ -45,8 +45,13 @@ const HOW: Record<Exclude<MatchHow, null>, string> = {
  * written until the person agrees. What they answer is remembered, so the
  * second receipt from the same shop asks about almost nothing.
  */
-export function ReceiptSheet({ onClose, onDone }: { onClose: () => void; onDone: (message: string) => void }) {
-  const [text, setText] = useState('');
+export function ReceiptSheet({ onClose, onDone, initialText = null }: {
+  onClose: () => void;
+  onDone: (message: string) => void;
+  /** Text shared from another app: read at once, with no paste step. */
+  initialText?: string | null;
+}) {
+  const [text, setText] = useState(initialText ?? '');
   const [preview, setPreview] = useState<Preview | null>(null);
 
   const form = useRef<HTMLDivElement>(null);
@@ -71,6 +76,10 @@ export function ReceiptSheet({ onClose, onDone }: { onClose: () => void; onDone:
     setPreview(await api.post<Preview>('/pantry/receipts/preview', { text: payload }));
   }
 
+  useEffect(() => {
+    if (initialText?.trim()) form.current?.querySelector('form')?.requestSubmit();
+  }, []);
+
   async function pasteAndRead() {
     try {
       const clip = await navigator.clipboard.readText();
@@ -88,7 +97,7 @@ export function ReceiptSheet({ onClose, onDone }: { onClose: () => void; onDone:
     return (
       <Sheet title="קבלה מהסופר" onClose={onClose}>
         <p className="meta" style={{ marginBottom: 'var(--s3)' }}>
-          מעתיקים את ה-SMS מהסופר, או רק את הקישור שבו, ומדביקים.
+          בעמוד הקבלה: «הצגת עוד פריטים», בחירת הכול ואז «שיתוף» לקאסה. או מעתיקים ומדביקים כאן.
         </p>
         <button type="button" className="btn btn-primary btn-block" style={{ marginBottom: 'var(--s4)' }} onClick={() => void pasteAndRead()}>
           הדבקה וקריאה

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'casa-v0.17.1';
+const CACHE_NAME = 'casa-v0.17.2';
 
 /**
  * The supermarket service worker.
@@ -122,8 +122,28 @@ async function navigate(request) {
   }
 }
 
+// A receipt shared to the app from another app (Android's «שיתוף»).
+//
+// POST, and kept here rather than sent on: a GET share would put the whole
+// receipt in the URL, and with it in every access log between the phone and
+// the server. The text waits in a cache entry the page reads once and deletes.
+const SHARED_RECEIPT = '/__shared-receipt';
+
+async function receiveShare(request) {
+  const form = await request.formData();
+  const text = ['title', 'text', 'url'].map((k) => form.get(k)).filter((v) => typeof v === 'string' && v.trim()).join('\n');
+  const cache = await caches.open('casa-share');
+  await cache.put(SHARED_RECEIPT, new Response(text, { headers: { 'content-type': 'text/plain; charset=utf-8' } }));
+  return Response.redirect('/shopping/receipt', 303);
+}
+
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+
+  if (event.request.method === 'POST' && url.origin === self.location.origin && url.pathname === '/share-receipt') {
+    event.respondWith(receiveShare(event.request));
+    return;
+  }
 
   if (event.request.method !== 'GET' || !url.protocol.startsWith('http')) return;
   // Another origin's response is not ours to keep, and Google's sign-in script
